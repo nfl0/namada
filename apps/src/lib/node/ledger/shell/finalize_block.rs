@@ -480,7 +480,8 @@ where
             .update_epoch(height, header_time)
             .expect("Must be able to update epoch");
 
-        self.slash();
+        self.record_slashes_from_evidence();
+        self.process_slashes();
         (height, new_epoch)
     }
 
