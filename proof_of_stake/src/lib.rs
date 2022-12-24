@@ -2556,3 +2556,52 @@ where
 
     Ok(())
 }
+/// Calculate cubic slashing rate
+pub fn get_cubic_slash_rate<S>(
+    storage: &S,
+    params: &PosParams,
+    infraction_epoch: Epoch,
+    current_slash_type: SlashType,
+) -> storage_api::Result<Decimal>
+where
+    S: for<'iter> StorageRead<'iter>,
+{
+    let mut sum_vp_fraction = Decimal::ZERO;
+    let start_epoch = infraction_epoch - params.cubic_slashing_window_length;
+    let num_epochs = 2 * params.cubic_slashing_window_length + 1;
+    for epoch in Epoch::iter_range(start_epoch, num_epochs) {
+        let slashes = slashes_handle().at(&epoch);
+        let infracting_stake =
+            slashes.iter(storage)?.fold(Decimal::ZERO, |sum, res| {
+                let (key, _slash) = res.unwrap();
+                match key {
+                    NestedSubKey::Data {
+                        key,
+                        nested_sub_key: _,
+                    } => {
+                        let validator_stake =
+                            read_validator_stake(storage, params, &key, epoch)
+                                .unwrap();
+                        sum + Decimal::from(validator_stake)
+                        // TODO: does something more complex need to be done
+                        // here in the event some of these slashes correspond to
+                        // the same validator?
+                    }
+                }
+            });
+        let total_stake = read_total_stake(storage, params, epoch)?
+            .map(Decimal::from)
+            .unwrap();
+        sum_vp_fraction += infracting_stake / total_stake;
+    }
+    // Need some truncation right now to max the rate at 100%
+    let rate = cmp::min(
+        Decimal::ONE,
+        cmp::max(
+            current_slash_type.get_slash_rate(params),
+            dec!(9) * sum_vp_fraction * sum_vp_fraction,
+        ),
+    );
+    Ok(rate)
+}
+
