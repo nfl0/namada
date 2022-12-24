@@ -129,6 +129,17 @@ pub type Bonds = crate::epoched::EpochedDelta<
     23,
 >;
 
+/// Slashes indexed by validator address
+pub type ValidatorSlashes = NestedMap<Address, SlashesNew>;
+
+/// Epoched slashes, where the outer epoch key is the epoch in which the slash
+/// is processed
+pub type EpochedSlashes = crate::epoched_new::NestedEpoched<
+    ValidatorSlashes,
+    crate::epoched_new::OffsetUnbondingLen,
+    U64_MAX,
+>;
+
 /// Epochs validator's unbonds
 pub type Unbonds = NestedMap<Epoch, LazyMap<Epoch, token::Amount>>;
 
@@ -320,6 +331,9 @@ pub enum ValidatorState {
     /// A validator who is deactivated via a tx when a validator no longer
     /// wants to be one (not implemented yet)
     Inactive,
+    /// A `Jailed` validator has been prohibited from participating in
+    /// consensus due to a misbehavior
+    Jailed,
 }
 
 /// A slash applied to validator, to punish byzantine behavior by removing

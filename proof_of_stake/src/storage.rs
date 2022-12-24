@@ -23,6 +23,7 @@ const VALIDATOR_DELEGATION_REWARDS_PRODUCT_KEY: &str =
 const VALIDATOR_LAST_KNOWN_PRODUCT_EPOCH_KEY: &str =
     "last_known_rewards_product_epoch";
 const SLASHES_PREFIX: &str = "slash";
+const ALL_SLASHES_KEY: &str = "all_slashes";
 const BOND_STORAGE_KEY: &str = "bond";
 const UNBOND_STORAGE_KEY: &str = "unbond";
 const VALIDATOR_SETS_STORAGE_PREFIX: &str = "validator_sets";
@@ -304,6 +305,13 @@ pub fn is_validator_deltas_key(key: &Key) -> Option<&Address> {
 pub fn slashes_prefix() -> Key {
     Key::from(ADDRESS.to_db_key())
         .push(&SLASHES_PREFIX.to_owned())
+        .expect("Cannot obtain a storage key")
+}
+
+/// Storage key for all slashes.
+pub fn all_slashes_key() -> Key {
+    slashes_prefix()
+        .push(&ALL_SLASHES_KEY.to_owned())
         .expect("Cannot obtain a storage key")
 }
 
