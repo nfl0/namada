@@ -247,6 +247,8 @@ pub mod genesis_config {
         /// room for header data, evidence and protobuf
         /// serialization overhead in Tendermint blocks.
         pub max_proposal_bytes: ProposalBytes,
+        /// Max block gas
+        pub max_block_gas: u64,
         /// Minimum number of blocks per epoch.
         // XXX: u64 doesn't work with toml-rs!
         pub min_num_of_blocks: u64,
@@ -607,6 +609,7 @@ pub mod genesis_config {
                 )
                 .into(),
             max_proposal_bytes: parameters.max_proposal_bytes,
+            max_block_gas: parameters.max_block_gas,
             vp_whitelist: parameters.vp_whitelist.unwrap_or_default(),
             tx_whitelist: parameters.tx_whitelist.unwrap_or_default(),
             implicit_vp_code_path,
@@ -840,6 +843,8 @@ pub struct ImplicitAccount {
 pub struct Parameters {
     // Max payload size, in bytes, for a tx batch proposal.
     pub max_proposal_bytes: ProposalBytes,
+    /// Max block gas
+    pub max_block_gas: u64,
     /// Epoch duration
     pub epoch_duration: EpochDuration,
     /// Maximum expected time per block
@@ -951,6 +956,7 @@ pub fn genesis(num_validators: u64) -> Genesis {
         },
         max_expected_time_per_block: namada::types::time::DurationSecs(30),
         max_proposal_bytes: Default::default(),
+        max_block_gas: u64::MAX, //FIXME: adjust this value
         vp_whitelist: vec![],
         tx_whitelist: vec![],
         implicit_vp_code_path: vp_implicit_path.into(),

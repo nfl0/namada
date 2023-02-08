@@ -35,6 +35,8 @@ pub struct Parameters {
     pub max_expected_time_per_block: DurationSecs,
     /// Max payload size, in bytes, for a tx batch proposal.
     pub max_proposal_bytes: ProposalBytes,
+    /// Max gas for block
+    pub max_block_gas: u64,
     /// Whitelisted validity predicate hashes (read only)
     pub vp_whitelist: Vec<String>,
     /// Whitelisted tx hashes (read only)
@@ -110,6 +112,7 @@ impl Parameters {
             epoch_duration,
             max_expected_time_per_block,
             max_proposal_bytes,
+            max_block_gas,
             vp_whitelist,
             tx_whitelist,
             implicit_vp,
@@ -127,6 +130,10 @@ impl Parameters {
         // write max proposal bytes parameter
         let max_proposal_bytes_key = storage::get_max_proposal_bytes_key();
         storage.write(&max_proposal_bytes_key, max_proposal_bytes)?;
+
+        // write max block gas parameter
+        let max_block_gas_key = storage::get_max_block_gas_key();
+        storage.write(&max_block_gas_key, max_block_gas)?;
 
         // write epoch parameters
         let epoch_key = storage::get_epoch_duration_storage_key();
@@ -391,6 +398,15 @@ where
             .into_storage_result()?
     };
 
+    // read max block gas
+    let max_block_gas: u64 = {
+        let key = storage::get_max_block_gas_key();
+        let value = storage.read(&key)?;
+        value
+            .ok_or(ReadError::ParametersMissing)
+            .into_storage_result()?
+    };
+
     // read epoch duration
     let epoch_duration = read_epoch_duration_parameter(storage)?;
 
@@ -469,6 +485,7 @@ where
         epoch_duration,
         max_expected_time_per_block,
         max_proposal_bytes,
+        max_block_gas,
         vp_whitelist,
         tx_whitelist,
         implicit_vp,

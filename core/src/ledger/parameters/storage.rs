@@ -19,6 +19,7 @@ struct Keys {
     tx_whitelist: &'static str,
     vp_whitelist: &'static str,
     max_proposal_bytes: &'static str,
+    max_block_gas: &'static str,
     faucet_account: &'static str,
     wrapper_tx_fees: &'static str,
 }
@@ -237,6 +238,16 @@ pub fn get_max_proposal_bytes_key() -> Key {
         segments: vec![
             DbKeySeg::AddressSeg(ADDRESS),
             DbKeySeg::StringSeg(Keys::VALUES.max_proposal_bytes.to_string()),
+        ],
+    }
+}
+
+/// Storage key used for the max block gas.
+pub fn get_max_block_gas_key() -> Key {
+    Key {
+        segments: vec![
+            DbKeySeg::AddressSeg(ADDRESS),
+            DbKeySeg::StringSeg(Keys::VALUES.max_block_gas.to_string()),
         ],
     }
 }
