@@ -350,7 +350,7 @@ fn test_bonds_aux(params: PosParams, validators: Vec<GenesisValidator>) {
         &s,
         &params,
         &validator.address,
-        pipeline_epoch - 1,
+        pipeline_epoch.prev(),
     )
     .unwrap()
     .unwrap_or_default();
@@ -366,7 +366,7 @@ fn test_bonds_aux(params: PosParams, validators: Vec<GenesisValidator>) {
     let delegation = bond_handle(&delegator, &validator.address);
     assert_eq!(
         delegation
-            .get_sum(&s, pipeline_epoch - 1, &params)
+            .get_sum(&s, pipeline_epoch.prev(), &params)
             .unwrap()
             .unwrap_or_default(),
         token::Change::default()
@@ -464,7 +464,7 @@ fn test_bonds_aux(params: PosParams, validators: Vec<GenesisValidator>) {
         &s,
         &params,
         &validator.address,
-        pipeline_epoch - 1,
+        pipeline_epoch.prev(),
     )
     .unwrap();
     let val_stake_post =
@@ -514,7 +514,7 @@ fn test_bonds_aux(params: PosParams, validators: Vec<GenesisValidator>) {
         &s,
         &params,
         &validator.address,
-        pipeline_epoch - 1,
+        pipeline_epoch.prev(),
     )
     .unwrap();
     let val_stake_post =

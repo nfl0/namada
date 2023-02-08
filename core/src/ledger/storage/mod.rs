@@ -761,6 +761,7 @@ where
                 .pred_epochs
                 .new_epoch(height, evidence_max_age_num_blocks);
             tracing::info!("Began a new epoch {}", self.block.epoch);
+            //            self.update_allowed_conversions()?;
         }
         self.update_epoch_in_merkle_tree()?;
         Ok(new_epoch)

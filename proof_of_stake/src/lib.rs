@@ -351,6 +351,19 @@ pub fn delegator_rewards_products_handle(
     RewardsProducts::open(key)
 }
 
+// /// Get the storage handle to a validator's self rewards products queue
+// pub fn validator_rewards_products_queue_handle() -> RewardsProductsQueue {
+//     let key = storage::validator_self_rewards_product_queue_key();
+//     RewardsProductsQueue::open(key)
+// }
+
+// /// Get the storage handle to the delegator rewards products queue associated
+// /// with a particular validator
+// pub fn delegator_rewards_products_queue_handle() -> RewardsProductsQueue {
+//     let key = storage::validator_delegation_rewards_product_queue_key();
+//     RewardsProductsQueue::open(key)
+// }
+
 /// new init genesis
 pub fn init_genesis<S>(
     storage: &mut S,
@@ -1220,7 +1233,7 @@ where
     // even needs to be copied (it may truly be empty after having one time
     // contained validators in the past)
 
-    let prev_epoch = target_epoch - 1;
+    let prev_epoch = target_epoch.prev();
 
     let (consensus, below_capacity) = (
         consensus_validator_set.at(&prev_epoch),
@@ -1494,9 +1507,45 @@ where
     // future-most, then decrement those values. For every val that
     // gets decremented down to 0, need a unique unbond object.
     // Read all matched bonds into memory to do reverse iteration
+    let rewards_products = if source == validator {
+        delegator_rewards_products_handle(validator)
+    } else {
+        validator_rewards_products_handle(validator)
+    };
+    let last_rp =
+        find_last_reward_product(storage, &rewards_products, current_epoch)?;
+
+    // #[allow(clippy::needless_collect)]
+    // let bonds: Vec<Result<_, _>> =
+    //     bonds_handle.get_data_handler().iter(storage)?.collect();
+
+    // Adjust the bond amounts to include contributions due to rewards
     #[allow(clippy::needless_collect)]
-    let bonds: Vec<Result<_, _>> =
-        bonds_handle.get_data_handler().iter(storage)?.collect();
+    let bonds: Vec<Result<_, _>> = bonds_handle
+        .get_data_handler()
+        .iter(storage)?
+        .map(|a| {
+            let (epoch, delta) = a.unwrap();
+            let mut reward_factor = Decimal::ONE;
+            if epoch < current_epoch {
+                // TODO: ensure that there is no underflow anywhere
+                let rp = find_last_reward_product(
+                    storage,
+                    &rewards_products,
+                    epoch.prev(),
+                )?;
+                reward_factor = last_rp / rp;
+            }
+            Ok::<
+                (
+                    namada_core::types::storage::Epoch,
+                    i128,
+                    rust_decimal::Decimal,
+                ),
+                storage_api::Error,
+            >((epoch, delta, reward_factor))
+        })
+        .collect();
 
     // println!("\nBonds before decrementing:");
     // for ep in Epoch::default().iter_range(params.unbonding_len * 3) {
@@ -1515,16 +1564,24 @@ where
     let mut new_bond_values_map =
         HashMap::<Epoch, (token::Amount, token::Amount)>::new();
 
+    // TODO: check arithmetic in light of Amount <-> Decimal conversions
     while remaining > token::Amount::default() {
         let bond = bond_iter.next().transpose()?;
         if bond.is_none() {
             continue;
         }
-        let (bond_epoch, bond_amnt) = bond.unwrap();
+        let (bond_epoch, bond_amnt, bond_reward_factor) = bond.unwrap();
         let bond_amount = token::Amount::from_change(bond_amnt);
+        let eff_bond_amount =
+            token::Amount::from(Decimal::from(bond_amnt) * bond_reward_factor);
 
-        let to_unbond = cmp::min(bond_amount, remaining);
-        let new_bond_amount = bond_amount - to_unbond;
+        // Compare the remaining amount and the effective bond amount (with
+        // rewards)
+        let to_unbond = cmp::min(eff_bond_amount, remaining);
+        let new_bond_amount = bond_amount
+            - token::Amount::from(
+                Decimal::from(to_unbond) / bond_reward_factor,
+            );
         new_bond_values_map.insert(bond_epoch, (new_bond_amount, to_unbond));
 
         let mut slashes_for_this_bond = Vec::<Slash>::new();
@@ -1854,7 +1911,7 @@ where
         return Ok(());
     }
     let rate_before_pipeline = commission_handle
-        .get(storage, pipeline_epoch - 1, &params)?
+        .get(storage, pipeline_epoch.prev(), &params)?
         .expect("Could not find a rate in given epoch");
     let change_from_prev = new_rate - rate_before_pipeline;
     if change_from_prev.abs() > max_change.unwrap() {
@@ -2732,7 +2789,6 @@ where
                     read_validator_stake(storage, params, &validator, epoch)
                         .unwrap()
                         .unwrap_or_default();
-
                 sum + Decimal::from(validator_stake)
                 // TODO: does something more complex need to be done
                 // here in the event some of these slashes correspond to
@@ -3156,4 +3212,106 @@ where
         params.pipeline_len,
     )?;
     Ok(())
+}
+/// Read the stake of a validator including PoS rewards
+pub fn read_validator_effective_stake<S>(
+    storage: &mut S,
+    validator: &Address,
+    params: &PosParams,
+    epoch: Epoch,
+) -> storage_api::Result<token::Amount>
+where
+    S: StorageRead,
+{
+    // TODO:
+    // 1. apply rewards at pipeline, so consider matching across 2 epochs
+    // 2. consider discontinuities in deltas or rewards
+
+    let rewards_products = validator_rewards_products_handle(validator);
+    let deltas = validator_deltas_handle(validator);
+
+    // The future-most relevant reward product is from the previous epoch
+    let last_rp = if epoch == Epoch::default() {
+        Decimal::ONE
+    } else {
+        find_last_reward_product(storage, &rewards_products, epoch.prev())?
+    };
+
+    // Start with the raw delta in the query epoch (rewards applied after ends
+    // of epoch so they don't affect)
+    let mut total = deltas
+        .get_delta_val(storage, epoch, params)?
+        .unwrap_or_default();
+
+    // TODO: think abt where to stop this loop
+    let mut epoch_it = epoch.prev();
+    while epoch_it.0 > 0 {
+        let rp =
+            find_last_reward_product(storage, &rewards_products, epoch_it)?;
+        if let Some(delta) = deltas.get_delta_val(storage, epoch, params)? {
+            total += decimal_mult_i128(last_rp / rp, delta);
+        }
+        epoch_it.0 -= 1;
+    }
+    // for ep in 0..epoch.0 {
+    //     let epoch = Epoch(ep);
+    //     let rp = find_last_reward_product(storage, rewards_products, epoch)?;
+    //     if let Some(delta) = deltas.get_delta_val(storage, epoch, params)? {
+    //         total += decimal_mult_i128(last_rp / rp, delta);
+    //     }
+    // }
+
+    Ok(token::Amount::from_change(total))
+}
+
+fn find_last_reward_product<S>(
+    storage: &S,
+    rp_handle: &RewardsProducts,
+    epoch: Epoch,
+) -> storage_api::Result<Decimal>
+where
+    S: StorageRead,
+{
+    let mut epoch_it = epoch;
+    loop {
+        if epoch_it == Epoch::default() {
+            return Ok(rp_handle
+                .get(storage, &epoch_it)?
+                .unwrap_or(Decimal::ONE));
+        }
+        if let Some(rp) = rp_handle.get(storage, &epoch_it)? {
+            return Ok(rp);
+        } else {
+            epoch_it.0 -= 1;
+        }
+    }
+}
+
+/// Get the total bond amount at a certain epoch with inflationary rewards
+/// applied
+pub fn get_bond_amount_with_rewards<S>(
+    storage: &mut S,
+    bond_handle: &Bonds,
+    reward_products: &RewardsProducts,
+    epoch: Epoch,
+) -> storage_api::Result<token::Amount>
+where
+    S: StorageRead,
+{
+    let last_rp = find_last_reward_product(storage, reward_products, epoch)?;
+    let mut sum = token::Change::default();
+    for bond in bond_handle.get_data_handler().iter(storage)? {
+        let (start_epoch, delta) = bond?;
+        let rp = if start_epoch == Epoch::default() {
+            Decimal::ONE
+        } else {
+            find_last_reward_product(
+                storage,
+                reward_products,
+                start_epoch.prev(),
+            )?
+        };
+        sum += decimal_mult_i128(last_rp / rp, delta);
+    }
+    Ok(token::Amount::from_change(sum))
 }

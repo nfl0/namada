@@ -15,9 +15,9 @@ use namada::ledger::storage_api::{StorageRead, StorageWrite};
 use namada::proof_of_stake::{
     delegator_rewards_products_handle, find_validator_by_raw_hash,
     read_last_block_proposer_address, read_pos_params, read_total_stake,
-    read_validator_stake, rewards_accumulator_handle,
-    validator_commission_rate_handle, validator_rewards_products_handle,
-    write_last_block_proposer_address,
+    read_validator_stake, rewards_accumulator_handle, update_total_deltas,
+    update_validator_deltas, validator_commission_rate_handle,
+    validator_rewards_products_handle, write_last_block_proposer_address,
 };
 use namada::types::address::Address;
 #[cfg(feature = "abcipp")]
@@ -61,6 +61,12 @@ where
         &mut self,
         req: shim::request::FinalizeBlock,
     ) -> Result<shim::response::FinalizeBlock> {
+        println!(
+            "\nFINALIZE BLOCK {} - NUM TXS = {}",
+            self.wl_storage.storage.block.height + 1,
+            req.txs.len()
+        );
+
         // Reset the gas meter before we start
         self.gas_meter.reset();
 
@@ -79,6 +85,9 @@ where
             "Block height: {height}, epoch: {current_epoch}, new epoch: \
              {new_epoch}."
         );
+
+        println!("BYZANTINE VALIDATORS:");
+        dbg!(&self.byzantine_validators);
 
         if new_epoch {
             namada::ledger::storage::update_allowed_conversions(
@@ -480,7 +489,10 @@ where
             .update_epoch(height, header_time)
             .expect("Must be able to update epoch");
 
+        println!("\nRECORDING SLASHES FROM EVIDENCE");
         self.record_slashes_from_evidence();
+        println!("\nPROCESSING SLASHES ENQUEUED FOR THIS EPOCH");
+
         self.process_slashes();
 
         (height, new_epoch)
@@ -541,7 +553,7 @@ where
         proposer_address: &Address,
         votes: &[VoteInfo],
     ) -> Result<()> {
-        let last_epoch = current_epoch - 1;
+        let last_epoch = current_epoch.prev();
         // Get input values needed for the PD controller for PoS and MASP.
         // Run the PD controllers to calculate new rates.
         //
@@ -651,9 +663,14 @@ where
         // for the previous epoch
         //
         // TODO: think about changing the reward to Decimal
-        let mut reward_tokens_remaining = inflation;
-        let mut new_rewards_products: HashMap<Address, (Decimal, Decimal)> =
+        let mut total_reward_amount = 0_u64;
+        let mut new_rewards: HashMap<Address, (u64, Decimal, Decimal)> =
             HashMap::new();
+
+        // TODO: should this be pipeline relative to the current (new) epoch or
+        // the previous one from which these rewards are derived?
+        let _pipeline_epoch = current_epoch + params.pipeline_len;
+
         for acc in rewards_accumulator_handle().iter(&self.wl_storage)? {
             let (address, value) = acc?;
 
@@ -689,26 +706,40 @@ where
                 * (Decimal::ONE
                     + (Decimal::ONE - commission_rate) * Decimal::from(reward)
                         / stake);
-            new_rewards_products
-                .insert(address, (new_product, new_delegation_product));
-            reward_tokens_remaining -= reward;
+            new_rewards
+                .insert(address, (reward, new_product, new_delegation_product));
+            total_reward_amount += reward;
         }
-        for (
-            address,
-            (new_validator_reward_product, new_delegator_reward_product),
-        ) in new_rewards_products
+        // Write new rewards products to storage and update deltas
+        for (validator, (reward, new_validator_rp, new_delegator_rp)) in
+            new_rewards
         {
-            validator_rewards_products_handle(&address).insert(
+            validator_rewards_products_handle(&validator).insert(
                 &mut self.wl_storage,
                 last_epoch,
-                new_validator_reward_product,
+                new_validator_rp,
             )?;
-            delegator_rewards_products_handle(&address).insert(
+            delegator_rewards_products_handle(&validator).insert(
                 &mut self.wl_storage,
                 last_epoch,
-                new_delegator_reward_product,
+                new_delegator_rp,
+            )?;
+            update_validator_deltas(
+                &mut self.wl_storage,
+                &params,
+                &validator,
+                token::Change::from(reward),
+                current_epoch,
+                params.pipeline_len,
             )?;
         }
+        update_total_deltas(
+            &mut self.wl_storage,
+            &params,
+            token::Change::from(total_reward_amount),
+            current_epoch,
+            params.pipeline_len,
+        )?;
 
         // TODO: Figure out how to deal with round-off to a whole number of
         // tokens. May be tricky. TODO: Storing reward products
@@ -716,6 +747,7 @@ where
         // TODO: perhaps only upon withdrawal. But by truncating at
         // withdrawal, may leave tokens in TDOD: the PoS account
         // that are not accounted for. Is this an issue?
+        let reward_tokens_remaining = inflation - total_reward_amount;
         if reward_tokens_remaining > 0 {
             // TODO: do something here?
         }
