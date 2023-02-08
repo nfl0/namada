@@ -130,14 +130,14 @@ pub type Bonds = crate::epoched::EpochedDelta<
 >;
 
 /// Slashes indexed by validator address
-pub type ValidatorSlashes = NestedMap<Address, SlashesNew>;
+pub type ValidatorSlashes = NestedMap<Address, Slashes>;
 
 /// Epoched slashes, where the outer epoch key is the epoch in which the slash
 /// is processed
-pub type EpochedSlashes = crate::epoched_new::NestedEpoched<
+pub type EpochedSlashes = crate::epoched::NestedEpoched<
     ValidatorSlashes,
-    crate::epoched_new::OffsetUnbondingLen,
-    U64_MAX,
+    crate::epoched::OffsetUnbondingLen,
+    23,
 >;
 
 /// Epochs validator's unbonds

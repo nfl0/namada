@@ -538,8 +538,8 @@ where
     /// Process and apply slashes that have already been recorded for the
     /// current epoch
     fn process_slashes(&mut self) {
-        let current_epoch = self.storage.block.epoch;
-        if let Err(err) = process_slashes(&mut self.storage, current_epoch) {
+        let current_epoch = self.wl_storage.storage.block.epoch;
+        if let Err(err) = process_slashes(&mut self.wl_storage, current_epoch) {
             tracing::error!(
                 "Error while processing slashes queued for epoch {}: {}",
                 current_epoch,

@@ -61,11 +61,12 @@ use thiserror::Error;
 use types::{
     decimal_mult_i128, decimal_mult_u64, BelowCapacityValidatorSet,
     BelowCapacityValidatorSets, BondId, Bonds, CommissionRates,
-    ConsensusValidator, ConsensusValidatorSet, ConsensusValidatorSets, EpochedSlashes,
-    GenesisValidator, Position, RewardsProducts, Slash, SlashType, Slashes,
-    TotalDeltas, Unbonds, ValidatorConsensusKeys, ValidatorDeltas,
-    ValidatorPositionAddresses, ValidatorSetPositions, ValidatorSetUpdate,
-    ValidatorState, ValidatorStates, VoteInfo, WeightedValidator,
+    ConsensusValidator, ConsensusValidatorSet, ConsensusValidatorSets,
+    EpochedSlashes, GenesisValidator, Position, RewardsProducts, Slash,
+    SlashType, Slashes, TotalDeltas, Unbonds, ValidatorConsensusKeys,
+    ValidatorDeltas, ValidatorPositionAddresses, ValidatorSetPositions,
+    ValidatorSetUpdate, ValidatorState, ValidatorStates, VoteInfo,
+    WeightedValidator,
 };
 
 /// Address of the PoS account implemented as a native VP
@@ -1610,7 +1611,7 @@ where
             continue;
         }
         for slash in validator_slashes.iter(storage)? {
-            let SlashNew {
+            let Slash {
                 epoch,
                 block_height: _,
                 r#type: slash_type,
@@ -2571,7 +2572,7 @@ pub fn get_cubic_slash_rate<S>(
     current_slash_type: SlashType,
 ) -> storage_api::Result<Decimal>
 where
-    S: for<'iter> StorageRead<'iter>,
+    S: StorageRead,
 {
     let mut sum_vp_fraction = Decimal::ZERO;
     let start_epoch = infraction_epoch - params.cubic_slashing_window_length;
@@ -2588,7 +2589,8 @@ where
                     } => {
                         let validator_stake =
                             read_validator_stake(storage, params, &key, epoch)
-                                .unwrap();
+                                .unwrap()
+                                .unwrap_or_default();
                         sum + Decimal::from(validator_stake)
                         // TODO: does something more complex need to be done
                         // here in the event some of these slashes correspond to
@@ -2596,9 +2598,8 @@ where
                     }
                 }
             });
-        let total_stake = read_total_stake(storage, params, epoch)?
-            .map(Decimal::from)
-            .unwrap();
+        let total_stake =
+            Decimal::from(read_total_stake(storage, params, epoch)?);
         sum_vp_fraction += infracting_stake / total_stake;
     }
     // Need some truncation right now to max the rate at 100%
@@ -2612,9 +2613,9 @@ where
     Ok(rate)
 }
 
-/// NEW: apply and record a slash for a misbehavior that has been received from
+/// Apply and record a slash for a misbehavior that has been received from
 /// Tendermint
-pub fn slash_new<S>(
+pub fn slash_cubic<S>(
     storage: &mut S,
     params: &PosParams,
     current_epoch: Epoch,
@@ -2624,15 +2625,15 @@ pub fn slash_new<S>(
     validator: &Address,
 ) -> storage_api::Result<()>
 where
-    S: for<'iter> StorageRead<'iter> + StorageWrite,
+    S: StorageRead + StorageWrite,
 {
     // Upon slash detection, write the slash to the validator storage, write it
     // to EpochedSlashes at the processing epoch, jail the validator, and
     // immediately remove it from the validator set
 
     // Write the slash data to storage
-    let slash = SlashNew {
-        infraction_epoch: evidence_epoch,
+    let slash = Slash {
+        epoch: evidence_epoch,
         block_height: evidence_block_height.into(),
         r#type: slash_type,
     };
@@ -2655,7 +2656,7 @@ where
             // an inactive validator to the active set, then the validator is
             // not jailed
         }
-        ValidatorState::Candidate => {
+        ValidatorState::Consensus => {
             let amount_pre = validator_deltas_handle(validator)
                 .get_sum(storage, current_epoch, params)?
                 .unwrap_or_default();
@@ -2663,41 +2664,47 @@ where
                 .at(&current_epoch)
                 .get(storage, validator)?
                 .expect("Could not find validator's position in storage.");
-            let _ = active_validator_set_handle()
+            let _ = consensus_validator_set_handle()
                 .at(&current_epoch)
                 .at(&token::Amount::from_change(amount_pre))
                 .remove(storage, &val_position)?;
 
             // TODO: turn this num_active_validators thing into an epoched
             // perhaps so I can properly update it here
-            let num = read_num_active_validators(storage)?;
-            write_num_active_validators(storage, num - 1)?;
+            let num = read_num_consensus_validators(storage)?;
+            write_num_consensus_validators(storage, num - 1)?;
 
             // Promote the next max inactive validator to the active validator
             // set at the pipeline offset TODO: confirm that this is
             // what we will want to do
             let pipeline_epoch = current_epoch + params.pipeline_len;
-            let inactive_handle =
-                inactive_validator_set_handle().at(&pipeline_epoch);
-            let max_inactive_amount =
-                get_max_inactive_validator_amount(&inactive_handle, storage)?;
-            let position_to_promote = find_lowest_position(
-                &inactive_handle.at(&max_inactive_amount.into()),
+            let below_capacity_handle =
+                below_capacity_validator_set_handle().at(&pipeline_epoch);
+            let max_below_capacity_amount =
+                get_max_below_capacity_validator_amount(
+                    &below_capacity_handle,
+                    storage,
+                )?;
+            let position_to_promote = find_first_position(
+                &below_capacity_handle.at(&max_below_capacity_amount.into()),
                 storage,
             )?
             .expect("Should return a position.");
-            let removed_validator = inactive_handle
-                .at(&max_inactive_amount.into())
+            let removed_validator = below_capacity_handle
+                .at(&max_below_capacity_amount.into())
                 .remove(storage, &position_to_promote)?
                 .expect("Should have returned a removed validator.");
             insert_validator_into_set(
-                &active_validator_set_handle()
+                &consensus_validator_set_handle()
                     .at(&pipeline_epoch)
-                    .at(&max_inactive_amount),
+                    .at(&max_below_capacity_amount),
                 storage,
                 &pipeline_epoch,
                 &removed_validator,
             )?;
+        }
+        ValidatorState::BelowCapacity => {
+            todo!();
         }
         _ => {
             // TODO: get rid of this eventually
@@ -2726,7 +2733,7 @@ pub fn process_slashes<S>(
     current_epoch: Epoch,
 ) -> storage_api::Result<()>
 where
-    S: for<'iter> StorageRead<'iter> + StorageWrite,
+    S: StorageRead + StorageWrite,
 {
     // TODO: can perhaps simplify this by calculating the cubic slash rate only
     // once, since all slashes iterated in this processing should correspond to
@@ -2738,8 +2745,7 @@ where
     let slashes = slashes_handle().at(&current_epoch);
     let mut validator_slash_rates: HashMap<Address, Decimal> = HashMap::new();
 
-    let mut slashes_iter = slashes.iter(storage)?;
-    while let Some(slash) = slashes_iter.next() {
+    for slash in slashes.iter(storage)? {
         let (
             NestedSubKey::Data {
                 key: address,
@@ -2748,19 +2754,15 @@ where
             slash,
         ) = slash?;
 
-        debug_assert_eq!(slash.infraction_epoch, infraction_epoch);
+        debug_assert_eq!(slash.epoch, infraction_epoch);
 
         // TODO: check that the validator in question is Jailed. If not, decide
         // to return an error or continue
 
         // TODO: consider if something more elaborate needs to be done here (if
         // there are multiple slashes from same validator for example)
-        let slash_rate = get_cubic_slash_rate(
-            storage,
-            &params,
-            slash.infraction_epoch,
-            slash.r#type,
-        )?;
+        let slash_rate =
+            get_cubic_slash_rate(storage, &params, slash.epoch, slash.r#type)?;
         // Accumulate additively the slash rates for each validator
         let cur_validator_rate = validator_slash_rates
             .get(&address)
@@ -2768,7 +2770,6 @@ where
             .unwrap_or_default();
         validator_slash_rates.insert(address, slash_rate + cur_validator_rate);
     }
-    drop(slashes_iter);
 
     if validator_slash_rates.is_empty() {
         return Ok(());
@@ -2781,7 +2782,8 @@ where
             &params,
             validator,
             infraction_epoch,
-        )?;
+        )?
+        .unwrap_or_default();
         let slashed_amount = decimal_mult_u64(
             *slash_rate,
             u64::from(validator_stake_at_infraction),
@@ -2811,7 +2813,7 @@ where
         token::Amount::from(total_slashed),
         &ADDRESS,
         &SLASH_POOL_ADDRESS,
-    );
+    )?;
 
     Ok(())
 }
