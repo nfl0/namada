@@ -33,7 +33,7 @@ use namada::ledger::storage::{
     DBIter, Sha256Hasher, Storage, StorageHasher, WlStorage, DB,
 };
 use namada::ledger::storage_api::{self, StorageRead};
-use namada::ledger::{ibc, pos, protocol, replay_protection};
+use namada::ledger::{ibc, parameters, pos, protocol, replay_protection};
 use namada::proof_of_stake::{self, read_pos_params, slash};
 use namada::proto::{self, Tx};
 use namada::types::address::{masp, masp_tx_key, Address};
@@ -139,6 +139,7 @@ pub enum ErrorCodes {
     ReplayTx = 10,
     InvalidChainId = 11,
     ExpiredTx = 12,
+    BlockGasLimit = 13,
 }
 
 impl ErrorCodes {
@@ -155,7 +156,7 @@ impl ErrorCodes {
             | WasmRuntimeError => true,
             InvalidTx | InvalidSig | InvalidOrder | ExtraTxs
             | Undecryptable | AllocationError | ReplayTx | InvalidChainId
-            | ExpiredTx => false,
+            | ExpiredTx | BlockGasLimit => false,
         }
     }
 }
@@ -707,6 +708,19 @@ where
 
         // Tx type check
         if let TxType::Wrapper(wrapper) = tx_type {
+            // Max block gas
+            let max_block_gas: u64 = self
+                .read_storage_key(&parameters::storage::get_max_block_gas_key())
+                .expect("Missing max_block_gas parameter in storage");
+
+            if u64::from(&wrapper.gas_limit) > max_block_gas {
+                response.code = ErrorCodes::BlockGasLimit.into();
+                response.log =
+                    "Wrapper transaction exceeds the maximum block gas limit"
+                        .to_string();
+                return response;
+            }
+
             // Replay protection check
             let inner_hash_key =
                 replay_protection::get_tx_hash_key(&wrapper.tx_hash);
