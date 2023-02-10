@@ -69,6 +69,8 @@ where
     D: 'static + DB + for<'iter> DBIter<'iter> + Sync,
     H: 'static + StorageHasher + Sync,
 {
+    use namada_core::ledger::parameters;
+
     use crate::ledger::gas::BlockGasMeter;
     use crate::ledger::protocol;
     use crate::ledger::storage::write_log::WriteLog;
@@ -76,7 +78,13 @@ where
     use crate::types::storage::TxIndex;
     use crate::types::transaction::{DecryptedTx, TxType};
 
-    let mut gas_meter = BlockGasMeter::default();
+    let block_gas_limit: u64 = ctx
+        .wl_storage
+        .read(&parameters::storage::get_max_block_gas_key())
+        .expect("Error while reading storage key")
+        .expect("Missing parameter in storage");
+
+    let mut gas_meter = BlockGasMeter::new(block_gas_limit);
     let mut write_log = WriteLog::default();
     let tx = Tx::try_from(&request.data[..]).into_storage_result()?;
     let tx = TxType::Decrypted(DecryptedTx::Decrypted {

@@ -134,7 +134,7 @@ pub fn validate_ibc_vp_from_tx<'a>(
         &tx_env.wl_storage.write_log,
         tx,
         &TxIndex(0),
-        VpGasMeter::new(0),
+        VpGasMeter::new(0, 0),
         &keys_changed,
         &verifiers,
         vp_wasm_cache,
@@ -170,7 +170,7 @@ pub fn validate_token_vp_from_tx<'a>(
         &tx_env.wl_storage.write_log,
         tx,
         &TxIndex(0),
-        VpGasMeter::new(0),
+        VpGasMeter::new(0, 0),
         &keys_changed,
         &verifiers,
         vp_wasm_cache,
@@ -207,8 +207,8 @@ pub fn init_storage() -> (Address, Address) {
     (token, account)
 }
 
-pub fn prepare_client()
--> (ClientId, AnyClientState, HashMap<storage::Key, Vec<u8>>) {
+pub fn prepare_client(
+) -> (ClientId, AnyClientState, HashMap<storage::Key, Vec<u8>>) {
     let mut writes = HashMap::new();
 
     let msg = msg_create_client();

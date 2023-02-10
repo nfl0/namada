@@ -70,7 +70,7 @@ impl Default for TestTxEnv {
         Self {
             wl_storage,
             iterators: PrefixIterators::default(),
-            gas_meter: BlockGasMeter::default(),
+            gas_meter: BlockGasMeter::new(0),
             tx_index: TxIndex::default(),
             verifiers: BTreeSet::default(),
             result_buffer: None,
@@ -161,7 +161,7 @@ impl TestTxEnv {
             .ok();
         self.iterators = PrefixIterators::default();
         self.verifiers = BTreeSet::default();
-        self.gas_meter = BlockGasMeter::default();
+        self.gas_meter.reset();
     }
 
     /// Credit tokens to the target account.

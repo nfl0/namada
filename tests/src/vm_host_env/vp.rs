@@ -1,10 +1,12 @@
 use std::collections::BTreeSet;
 
 use namada::ledger::gas::VpGasMeter;
+use namada::ledger::parameters;
 use namada::ledger::storage::mockdb::MockDB;
 use namada::ledger::storage::testing::TestStorage;
 use namada::ledger::storage::write_log::WriteLog;
 use namada::ledger::storage::{Sha256Hasher, WlStorage};
+use namada::ledger::storage_api::StorageRead;
 use namada::proto::Tx;
 use namada::types::address::{self, Address};
 use namada::types::storage::{self, Key, TxIndex};
@@ -73,7 +75,7 @@ impl Default for TestVpEnv {
             addr: address::testing::established_address_1(),
             wl_storage,
             iterators: PrefixIterators::default(),
-            gas_meter: VpGasMeter::default(),
+            gas_meter: VpGasMeter::new(0, 0),
             tx: Tx::new(vec![], None, chain_id, None),
             tx_index: TxIndex::default(),
             keys_changed: BTreeSet::default(),

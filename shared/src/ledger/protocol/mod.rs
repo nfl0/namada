@@ -2,6 +2,7 @@
 use std::collections::BTreeSet;
 use std::panic;
 
+use namada_core::types::transaction::GasLimit;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
@@ -102,6 +103,7 @@ where
             #[cfg(not(feature = "mainnet"))]
             has_valid_pow,
         }) => {
+            //FIXME: how to get the hash of the transaction? Isn't it signed?
             let verifiers = execute_tx(
                 &tx,
                 &tx_index,
@@ -216,6 +218,7 @@ where
         tx_index,
         storage,
         write_log,
+        gas_meter.block_gas_limit,
         initial_gas,
         vp_wasm_cache,
         #[cfg(not(feature = "mainnet"))]
@@ -239,6 +242,7 @@ fn execute_vps<D, H, CA>(
     tx_index: &TxIndex,
     storage: &Storage<D, H>,
     write_log: &WriteLog,
+    max_block_gas: u64,
     initial_gas: u64,
     vp_wasm_cache: &mut VpCache<CA>,
     #[cfg(not(feature = "mainnet"))]
@@ -254,7 +258,7 @@ where
     verifiers
         .par_iter()
         .try_fold(VpsResult::default, |mut result, addr| {
-            let mut gas_meter = VpGasMeter::new(initial_gas);
+            let mut gas_meter = VpGasMeter::new(max_block_gas, initial_gas);
             let accept = match &addr {
                 Address::Implicit(_) | Address::Established(_) => {
                     let (vp, gas) = storage
@@ -434,7 +438,7 @@ where
             }
         })
         .try_reduce(VpsResult::default, |a, b| {
-            merge_vp_results(a, b, initial_gas)
+            merge_vp_results(a, b, max_block_gas, initial_gas)
         })
 }
 
@@ -442,6 +446,7 @@ where
 fn merge_vp_results(
     a: VpsResult,
     mut b: VpsResult,
+    max_block_gas: u64,
     initial_gas: u64,
 ) -> Result<VpsResult> {
     let mut accepted_vps = a.accepted_vps;
@@ -457,7 +462,7 @@ fn merge_vp_results(
     // gas costs
 
     gas_used
-        .merge(&mut b.gas_used, initial_gas)
+        .merge(&mut b.gas_used, max_block_gas, initial_gas)
         .map_err(Error::GasError)?;
 
     Ok(VpsResult {
