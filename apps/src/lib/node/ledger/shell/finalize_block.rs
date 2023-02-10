@@ -480,8 +480,13 @@ where
             .update_epoch(height, header_time)
             .expect("Must be able to update epoch");
 
+        println!("\nRECORDING SLASHES FROM EVIDENCE");
         self.record_slashes_from_evidence();
+        println!("\nPROCESSING SLASHES ENQUEUED FOR THIS EPOCH");
+
         self.process_slashes();
+        println!("\nSLASHES PROCESSED");
+
         (height, new_epoch)
     }
 

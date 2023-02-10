@@ -140,8 +140,32 @@ pub type EpochedSlashes = crate::epoched::NestedEpoched<
     23,
 >;
 
-/// Epochs validator's unbonds
+/// Epoched validator's unbonds
 pub type Unbonds = NestedMap<Epoch, LazyMap<Epoch, token::Amount>>;
+
+/// Total unbonded for validators needed for slashing
+/// TODO: (CHECK IF CORRECT BOUNDS)
+pub type ValidatorTotalUnbonded = NestedMap<Epoch, LazyVec<UnbondRecord>>;
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+/// TODO: an unbond record
+pub struct UnbondRecord {
+    /// Dangus
+    pub amount: token::Amount,
+    /// Bangus
+    pub start: Epoch,
+}
+
+#[derive(
+    Debug, Clone, BorshSerialize, BorshDeserialize, Eq, Hash, PartialEq,
+)]
+/// TODO: slashed amount for thing
+pub struct SlashedAmount {
+    /// Perlangus
+    pub amount: token::Amount,
+    /// Churms
+    pub epoch: Epoch,
+}
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 /// Commission rate and max commission rate change per epoch for a validator
@@ -500,7 +524,10 @@ pub fn mult_change_to_amount(
 
 /// Multiply a value of type Decimal with one of type Amount and then return the
 /// truncated Amount
-pub fn mult_amount(dec: Decimal, amount: token::Amount) -> token::Amount {
+pub fn decimal_mult_amount(
+    dec: Decimal,
+    amount: token::Amount,
+) -> token::Amount {
     let prod = dec * Decimal::from(amount);
     // truncate the number to the floor
     token::Amount::from(prod.to_u64().expect("Product is out of bounds"))

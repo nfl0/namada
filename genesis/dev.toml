@@ -177,7 +177,7 @@ duplicate_vote_min_slash_rate = 0.001
 light_client_attack_min_slash_rate = 0.001
 # Number of epochs above and below (separately) the current epoch to
 # consider when doing cubic slashing
-pub cubic_slashing_window_length = 1
+cubic_slashing_window_length = 1
 
 # Governance parameters.
 [gov_params]

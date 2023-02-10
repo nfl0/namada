@@ -26,6 +26,7 @@ const SLASHES_PREFIX: &str = "slash";
 const ALL_SLASHES_KEY: &str = "all_slashes";
 const BOND_STORAGE_KEY: &str = "bond";
 const UNBOND_STORAGE_KEY: &str = "unbond";
+const VALIDATOR_TOTAL_UNBONDED_STORAGE_KEY: &str = "total_unbonded";
 const VALIDATOR_SETS_STORAGE_PREFIX: &str = "validator_sets";
 const CONSENSUS_VALIDATOR_SET_STORAGE_KEY: &str = "consensus";
 const NUM_CONSENSUS_VALIDATORS_STORAGE_KEY: &str = "num_consensus";
@@ -455,6 +456,13 @@ pub fn is_unbond_key(key: &Key) -> Option<(BondId, Epoch, Epoch)> {
     } else {
         None
     }
+}
+
+/// Storage key for validator's total-unbonded amount to track for slashing
+pub fn validator_total_unbonded_key(validator: &Address) -> Key {
+    validator_prefix(validator)
+        .push(&VALIDATOR_TOTAL_UNBONDED_STORAGE_KEY.to_owned())
+        .expect("Cannot obtain a storage key")
 }
 
 /// Storage prefix for validator sets.
