@@ -60,8 +60,13 @@ where
         &mut self,
         req: shim::request::FinalizeBlock,
     ) -> Result<shim::response::FinalizeBlock> {
-        // Reset the gas meter before we start
-        self.gas_meter.reset();
+        let mut gas_meter =
+            BlockGasMeter::new(
+                self.read_storage_key(
+                    &parameters::storage::get_max_block_gas_key(),
+                )
+                .expect("Missing parameter in storage"),
+            );
 
         let mut response = shim::response::FinalizeBlock::default();
 
@@ -336,7 +341,7 @@ where
                         .try_into()
                         .expect("transaction index out of bounds"),
                 ),
-                &mut self.gas_meter,
+                &mut gas_meter,
                 &mut self.wl_storage.write_log,
                 &self.wl_storage.storage,
                 &mut self.vp_wasm_cache,
@@ -423,10 +428,8 @@ where
                     }
 
                     self.wl_storage.drop_tx();
-                    tx_event["gas_used"] = self
-                        .gas_meter
-                        .get_current_transaction_gas()
-                        .to_string();
+                    tx_event["gas_used"] =
+                        gas_meter.get_current_transaction_gas().to_string();
                     tx_event["info"] = msg.to_string();
                     tx_event["code"] = ErrorCodes::WasmRuntimeError.into();
                 }
@@ -504,8 +507,7 @@ where
             )?;
         }
 
-        let _ = self
-            .gas_meter
+        let _ = gas_meter
             .finalize_transaction()
             .map_err(|_| Error::GasOverflow)?;
 
@@ -527,8 +529,6 @@ where
         byzantine_validators: Vec<Evidence>,
     ) -> (BlockHeight, bool) {
         let height = self.wl_storage.storage.last_height + 1;
-
-        self.gas_meter.reset();
 
         self.wl_storage
             .storage
@@ -1507,11 +1507,9 @@ mod test_finalize_block {
         // won't receive votes from TM since we receive votes at a 1-block
         // delay, so votes will be empty here
         next_block_for_inflation(&mut shell, pkh1.clone(), vec![]);
-        assert!(
-            rewards_accumulator_handle()
-                .is_empty(&shell.wl_storage)
-                .unwrap()
-        );
+        assert!(rewards_accumulator_handle()
+            .is_empty(&shell.wl_storage)
+            .unwrap());
 
         // FINALIZE BLOCK 2. Tell Namada that val1 is the block proposer.
         // Include votes that correspond to block 1. Make val2 the next block's
@@ -1521,11 +1519,9 @@ mod test_finalize_block {
         assert!(rewards_prod_2.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_3.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_4.is_empty(&shell.wl_storage).unwrap());
-        assert!(
-            !rewards_accumulator_handle()
-                .is_empty(&shell.wl_storage)
-                .unwrap()
-        );
+        assert!(!rewards_accumulator_handle()
+            .is_empty(&shell.wl_storage)
+            .unwrap());
         // Val1 was the proposer, so its reward should be larger than all
         // others, which should themselves all be equal
         let acc_sum = get_rewards_sum(&shell.wl_storage);
@@ -1626,11 +1622,9 @@ mod test_finalize_block {
             );
             next_block_for_inflation(&mut shell, pkh1.clone(), votes.clone());
         }
-        assert!(
-            rewards_accumulator_handle()
-                .is_empty(&shell.wl_storage)
-                .unwrap()
-        );
+        assert!(rewards_accumulator_handle()
+            .is_empty(&shell.wl_storage)
+            .unwrap());
         let rp1 = rewards_prod_1
             .get(&shell.wl_storage, &Epoch::default())
             .unwrap()

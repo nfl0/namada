@@ -246,8 +246,6 @@ where
     chain_id: ChainId,
     /// The persistent storage with write log
     pub(super) wl_storage: WlStorage<D, H>,
-    /// Gas meter for the current block
-    gas_meter: BlockGasMeter,
     /// Byzantine validators given from ABCI++ `prepare_proposal` are stored in
     /// this field. They will be slashed when we finalize the block.
     byzantine_validators: Vec<Evidence>,
@@ -374,7 +372,6 @@ where
         Self {
             chain_id,
             wl_storage,
-            gas_meter: BlockGasMeter::default(),
             byzantine_validators: vec![],
             base_dir,
             wasm_dir,
@@ -800,7 +797,10 @@ where
     /// Simulate validation and application of a transaction.
     fn dry_run_tx(&self, tx_bytes: &[u8]) -> response::Query {
         let mut response = response::Query::default();
-        let mut gas_meter = BlockGasMeter::default();
+        let block_gas_limit: u64 = self
+            .read_storage_key(&parameters::storage::get_max_block_gas_key())
+            .expect("Missing parameter in storage");
+        let mut gas_meter = BlockGasMeter::new(block_gas_limit);
         let mut write_log = WriteLog::default();
         let mut vp_wasm_cache = self.vp_wasm_cache.read_only();
         let mut tx_wasm_cache = self.tx_wasm_cache.read_only();
