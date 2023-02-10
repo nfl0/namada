@@ -126,7 +126,6 @@ where
                 );
                 continue;
             };
-            let tx_length = processed_tx.tx.len();
             // If [`process_proposal`] rejected a Tx due to invalid signature,
             // emit an event here and move on to next tx.
             if ErrorCodes::from_u32(processed_tx.result.code).unwrap()
@@ -335,7 +334,6 @@ where
 
             match protocol::apply_tx(
                 tx_type,
-                tx_length,
                 TxIndex(
                     tx_index
                         .try_into()

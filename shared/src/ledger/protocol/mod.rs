@@ -2,7 +2,6 @@
 use std::collections::BTreeSet;
 use std::panic;
 
-use namada_core::types::transaction::GasLimit;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
@@ -79,7 +78,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[allow(clippy::too_many_arguments)]
 pub fn apply_tx<D, H, CA>(
     tx: TxType,
-    tx_length: usize,
     tx_index: TxIndex,
     block_gas_meter: &mut BlockGasMeter,
     write_log: &mut WriteLog,
@@ -92,10 +90,6 @@ where
     H: 'static + StorageHasher + Sync,
     CA: 'static + WasmCacheAccess + Sync,
 {
-    // Base gas cost for applying the tx
-    block_gas_meter
-        .add_base_transaction_fee(tx_length)
-        .map_err(Error::GasError)?;
     match tx {
         TxType::Raw(_) => Err(Error::TxTypeError),
         TxType::Decrypted(DecryptedTx::Decrypted {

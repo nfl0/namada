@@ -94,7 +94,6 @@ where
     });
     let data = protocol::apply_tx(
         tx,
-        request.data.len(),
         TxIndex(0),
         &mut gas_meter,
         &mut write_log,

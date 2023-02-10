@@ -166,9 +166,6 @@ where
                 .expect("Should be able to write to storage.");
             let tx_result = protocol::apply_tx(
                 tx_type,
-                0, /*  this is used to compute the fee
-                    * based on the code size. We dont
-                    * need it here. */
                 TxIndex::default(),
                 &mut BlockGasMeter::default(),
                 &mut shell.wl_storage.write_log,

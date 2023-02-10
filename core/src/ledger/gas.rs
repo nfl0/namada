@@ -16,7 +16,6 @@ pub enum Error {
 }
 
 const COMPILE_GAS_PER_BYTE: u64 = 1;
-const BASE_TRANSACTION_FEE: u64 = 2;
 const PARALLEL_GAS_DIVIDER: u64 = 10;
 
 /// The minimum gas cost for accessing the storage
@@ -84,14 +83,6 @@ impl BlockGasMeter {
             return Err(Error::BlockGasExceeded);
         }
         Ok(())
-    }
-
-    /// Add the base transaction fee and the fee per transaction byte that's
-    /// charged the moment we try to apply the transaction.
-    pub fn add_base_transaction_fee(&mut self, bytes_len: usize) -> Result<()> {
-        //FIXME: remove this?
-        tracing::trace!("add_base_transaction_fee {}", bytes_len);
-        self.add(BASE_TRANSACTION_FEE)
     }
 
     /// Add the compiling cost proportionate to the code length

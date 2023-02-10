@@ -815,7 +815,6 @@ where
                 });
                 match protocol::apply_tx(
                     tx,
-                    tx_bytes.len(),
                     TxIndex::default(),
                     &mut gas_meter,
                     &mut write_log,
