@@ -140,6 +140,7 @@ pub enum ErrorCodes {
     InvalidChainId = 11,
     ExpiredTx = 12,
     BlockGasLimit = 13,
+    DecryptedGasLimit = 14,
 }
 
 impl ErrorCodes {
@@ -153,7 +154,8 @@ impl ErrorCodes {
             Ok
             | InvalidDecryptedChainId
             | ExpiredDecryptedTx
-            | WasmRuntimeError => true,
+            | WasmRuntimeError
+            | DecryptedGasLimit => true,
             InvalidTx | InvalidSig | InvalidOrder | ExtraTxs
             | Undecryptable | AllocationError | ReplayTx | InvalidChainId
             | ExpiredTx | BlockGasLimit => false,

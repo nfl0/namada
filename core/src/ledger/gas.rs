@@ -15,6 +15,7 @@ pub enum Error {
     GasOverflow,
 }
 
+//FIXME: adjust these constants
 const COMPILE_GAS_PER_BYTE: u64 = 1;
 const PARALLEL_GAS_DIVIDER: u64 = 10;
 
@@ -30,6 +31,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct BlockGasMeter {
     /// The max amount of gas allowed per block, defined by the protocol parameter
     pub block_gas_limit: u64,
+    tx_gas_limit: u64,
     block_gas: u64,
     transaction_gas: u64,
 }
@@ -37,8 +39,8 @@ pub struct BlockGasMeter {
 /// Gas metering in a validity predicate
 #[derive(Debug, Clone)]
 pub struct VpGasMeter {
-    /// The block gas limit
-    block_gas_limit: u64,
+    /// The transaction gas limit
+    tx_gas_limit: u64,
     /// The gas used in the transaction before the VP run
     initial_gas: u64,
     /// The current gas usage in the VP
@@ -59,6 +61,7 @@ impl BlockGasMeter {
     pub fn new(block_gas_limit: u64) -> Self {
         Self {
             block_gas_limit,
+            tx_gas_limit: 0,
             block_gas: 0,
             transaction_gas: 0,
         }
@@ -70,8 +73,13 @@ impl BlockGasMeter {
         self.transaction_gas = 0;
     }
 
+    /// Set a new transaction gas limit
+    pub fn new_tx_limit(&mut self, tx_gas_limit: u64) {
+        self.tx_gas_limit = tx_gas_limit;
+    }
+
     /// Add gas cost for the current transaction. It will return error when the
-    /// consumed gas exceeds the block gas limit, but the state will still
+    /// consumed gas exceeds the transaction gas limit, but the state will still
     /// be updated.
     pub fn add(&mut self, gas: u64) -> Result<()> {
         self.transaction_gas = self
@@ -79,15 +87,16 @@ impl BlockGasMeter {
             .checked_add(gas)
             .ok_or(Error::GasOverflow)?;
 
-        if self.transaction_gas > self.block_gas_limit {
-            return Err(Error::BlockGasExceeded);
+        if self.transaction_gas > self.tx_gas_limit {
+            return Err(Error::TransactionGasExceededError);
         }
+
         Ok(())
     }
 
     /// Add the compiling cost proportionate to the code length
     pub fn add_compiling_fee(&mut self, bytes_len: usize) -> Result<()> {
-        //FIXME: remove this?
+        //FIXME: keep or remove?
         self.add(bytes_len as u64 * COMPILE_GAS_PER_BYTE)
     }
 
@@ -122,17 +131,17 @@ impl BlockGasMeter {
 
 impl VpGasMeter {
     /// Initialize a new VP gas meter, starting with the gas consumed in the
-    /// transaction so far. Also requires the block gas limit parameter.
-    pub fn new(block_gas_limit: u64, initial_gas: u64) -> Self {
+    /// transaction so far. Also requires the transaction gas limit.
+    pub fn new(tx_gas_limit: u64, initial_gas: u64) -> Self {
         Self {
-            block_gas_limit,
+            tx_gas_limit,
             initial_gas,
             current_gas: 0,
         }
     }
 
     /// Consume gas in a validity predicate. It will return error when the
-    /// consumed gas exceeds the block gas limit, but the state will still
+    /// consumed gas exceeds the transaction gas limit, but the state will still
     /// be updated.
     pub fn add(&mut self, gas: u64) -> Result<()> {
         let gas = self
@@ -147,14 +156,16 @@ impl VpGasMeter {
             .checked_add(self.current_gas)
             .ok_or(Error::GasOverflow)?;
 
-        if current_total > self.block_gas_limit {
-            return Err(Error::BlockGasExceeded);
+        if current_total > self.tx_gas_limit {
+            return Err(Error::TransactionGasExceededError);
         }
+
         Ok(())
     }
 
     /// Add the compiling cost proportionate to the code length
     pub fn add_compiling_fee(&mut self, bytes_len: usize) -> Result<()> {
+        //FIXME: keep or remove?
         self.add(bytes_len as u64 * COMPILE_GAS_PER_BYTE)
     }
 }
@@ -165,7 +176,7 @@ impl VpsGas {
         debug_assert_eq!(self.max, None);
         debug_assert!(self.rest.is_empty());
         self.max = Some(vp_gas_meter.current_gas);
-        self.check_limit(vp_gas_meter.block_gas_limit, vp_gas_meter.initial_gas)
+        self.check_limit(vp_gas_meter.tx_gas_limit, vp_gas_meter.initial_gas)
     }
 
     /// Merge validity predicates gas meters from parallelized runs.
@@ -194,16 +205,12 @@ impl VpsGas {
         self.check_limit(block_gas_limit, initial_gas)
     }
 
-    fn check_limit(
-        &self,
-        block_gas_limit: u64,
-        initial_gas: u64,
-    ) -> Result<()> {
+    fn check_limit(&self, tx_gas_limit: u64, initial_gas: u64) -> Result<()> {
         let total = initial_gas
             .checked_add(self.get_current_gas()?)
             .ok_or(Error::GasOverflow)?;
-        if total > block_gas_limit {
-            return Err(Error::GasOverflow);
+        if total > tx_gas_limit {
+            return Err(Error::TransactionGasExceededError);
         }
         Ok(())
     }
