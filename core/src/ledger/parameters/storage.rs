@@ -22,6 +22,7 @@ struct Keys {
     max_block_gas: &'static str,
     faucet_account: &'static str,
     wrapper_tx_fees: &'static str,
+    gas_table: &'static str,
 }
 
 /// Returns if the key is a parameter key.
@@ -156,6 +157,16 @@ pub fn get_tx_whitelist_storage_key() -> Key {
         segments: vec![
             DbKeySeg::AddressSeg(ADDRESS),
             DbKeySeg::StringSeg(Keys::VALUES.tx_whitelist.to_string()),
+        ],
+    }
+}
+
+/// Storage key used for gas cost.
+pub fn get_gas_table_storage_key() -> Key {
+    Key {
+        segments: vec![
+            DbKeySeg::AddressSeg(ADDRESS),
+            DbKeySeg::StringSeg(Keys::VALUES.gas_table.to_string()),
         ],
     }
 }

@@ -1,6 +1,6 @@
 //! The parameters used for the chain's genesis
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 #[cfg(not(feature = "dev"))]
 use std::path::Path;
 
@@ -24,7 +24,7 @@ use rust_decimal::Decimal;
 /// Genesis configuration file format
 pub mod genesis_config {
     use std::array::TryFromSliceError;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::convert::TryInto;
     use std::path::Path;
     use std::str::FromStr;
@@ -272,6 +272,8 @@ pub mod genesis_config {
         #[cfg(not(feature = "mainnet"))]
         /// Fix wrapper tx fees
         pub wrapper_tx_fees: Option<token::Amount>,
+        /// Gas table
+        pub gas_table: BTreeMap<String, u64>,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -620,6 +622,7 @@ pub mod genesis_config {
             staked_ratio: Decimal::ZERO,
             pos_inflation_amount: 0,
             wrapper_tx_fees: parameters.wrapper_tx_fees,
+            gas_table: parameters.gas_table,
         };
 
         let GovernanceParamsConfig {
@@ -870,6 +873,8 @@ pub struct Parameters {
     /// Fixed Wrapper tx fees
     #[cfg(not(feature = "mainnet"))]
     pub wrapper_tx_fees: Option<token::Amount>,
+    /// Gas table
+    pub gas_table: BTreeMap<String, u64>,
 }
 
 #[cfg(not(feature = "dev"))]
@@ -968,6 +973,7 @@ pub fn genesis(num_validators: u64) -> Genesis {
         staked_ratio: dec!(0.0),
         pos_inflation_amount: 0,
         wrapper_tx_fees: Some(token::Amount::whole(0)),
+        gas_table: BTreeMap::default(),
     };
     let albert = EstablishedAccount {
         address: wallet::defaults::albert_address(),

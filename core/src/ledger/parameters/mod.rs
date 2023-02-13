@@ -1,6 +1,8 @@
 //! Protocol parameters
 pub mod storage;
 
+use std::collections::BTreeMap;
+
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use rust_decimal::Decimal;
 use thiserror::Error;
@@ -59,6 +61,8 @@ pub struct Parameters {
     #[cfg(not(feature = "mainnet"))]
     /// Fixed fees for a wrapper tx to be accepted
     pub wrapper_tx_fees: Option<token::Amount>,
+    /// Gas table
+    pub gas_table: BTreeMap<String, u64>,
 }
 
 /// Epoch duration. A new epoch begins as soon as both the `min_num_of_blocks`
@@ -125,6 +129,7 @@ impl Parameters {
             faucet_account,
             #[cfg(not(feature = "mainnet"))]
             wrapper_tx_fees,
+            gas_table,
         } = self;
 
         // write max proposal bytes parameter
@@ -138,6 +143,10 @@ impl Parameters {
         // write epoch parameters
         let epoch_key = storage::get_epoch_duration_storage_key();
         storage.write(&epoch_key, epoch_duration)?;
+
+        // write gas table
+        let gas_table_key = storage::get_gas_table_storage_key();
+        storage.write(&gas_table_key, gas_table)?;
 
         // write vp whitelist parameter
         let vp_whitelist_key = storage::get_vp_whitelist_storage_key();
@@ -438,6 +447,13 @@ where
         .ok_or(ReadError::ParametersMissing)
         .into_storage_result()?;
 
+    // read gas table
+    let gas_table_key = storage::get_gas_table_storage_key();
+    let value = storage.read(&gas_table_key)?;
+    let gas_table: BTreeMap<String, u64> = value
+        .ok_or(ReadError::ParametersMissing)
+        .into_storage_result()?;
+
     // read epochs per year
     let epochs_per_year_key = storage::get_epochs_per_year_key();
     let value = storage.read(&epochs_per_year_key)?;
@@ -498,5 +514,6 @@ where
         faucet_account,
         #[cfg(not(feature = "mainnet"))]
         wrapper_tx_fees,
+        gas_table,
     })
 }

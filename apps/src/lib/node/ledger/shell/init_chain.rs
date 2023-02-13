@@ -90,6 +90,7 @@ where
             staked_ratio,
             pos_inflation_amount,
             wrapper_tx_fees,
+            mut gas_table,
         } = genesis.parameters;
         // borrow necessary for release build, annoys clippy on dev build
         #[allow(clippy::needless_borrow)]
@@ -111,6 +112,23 @@ where
                 implicit_vp_code_path
             );
         }
+        // Update gas table
+        let checksums = wasm_loader::Checksums::read_checksums(&self.wasm_dir);
+        let gas_file = wasm_loader::read_gas_file(&self.wasm_dir);
+        for (name, full_hash) in checksums.0.iter() {
+            let hash = full_hash
+                .split_once('.')
+                .unwrap()
+                .1
+                .split_once('.')
+                .unwrap()
+                .0;
+            gas_table.insert(
+                hash.to_owned(),
+                gas_file[name.split_once('.').unwrap().0],
+            );
+        }
+
         #[cfg(not(feature = "mainnet"))]
         // Try to find a faucet account
         let faucet_account = {
@@ -146,6 +164,7 @@ where
             faucet_account,
             #[cfg(not(feature = "mainnet"))]
             wrapper_tx_fees,
+            gas_table,
         };
         parameters
             .init_storage(&mut self.wl_storage)

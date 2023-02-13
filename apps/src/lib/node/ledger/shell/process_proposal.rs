@@ -4,6 +4,8 @@
 use data_encoding::HEXUPPER;
 use namada::core::hints;
 use namada::core::ledger::storage::WlStorage;
+use std::collections::BTreeMap;
+
 use namada::core::types::hash::Hash;
 use namada::ledger::storage::TempWlStorage;
 use namada::proof_of_stake::pos_queries::PosQueries;
@@ -146,6 +148,9 @@ where
                 )
                 .expect("Missing parameter in storage"),
             );
+        let gas_table: BTreeMap<String, u64> = self
+            .read_storage_key(&parameters::storage::get_gas_table_storage_key())
+            .expect("Missing gas table in storage");
 
         let tx_results = txs
             .iter()
@@ -157,6 +162,7 @@ where
                     &mut temp_wl_storage,
                     &mut temp_block_gas_meter,
                     block_time,
+                    &gas_table,
                 );
                 if let ErrorCodes::Ok =
                     ErrorCodes::from_u32(result.code).unwrap()
@@ -203,6 +209,7 @@ where
         temp_wl_storage: &mut TempWlStorage<D, H>,
         temp_block_gas_meter: &mut BlockGasMeter,
         block_time: DateTimeUtc,
+        gas_table: &BTreeMap<String, u64>,
     ) -> TxResult {
         // try to allocate space for this tx
         if let Err(e) = metadata.txs_bin.try_dump(tx_bytes) {
@@ -343,7 +350,22 @@ where
                                         };
                                     }
                                 }
+
+                                let tx_hash = Hash::sha256(tx.code)
+                                    .to_string()
+                                    .to_lowercase();
+                                let tx_gas_required =
+                                    gas_table[tx_hash.as_str()];
+                                if tx_gas_required
+                                    > u64::from(&wrapper.tx.gas_limit)
+                                {
+                                    return TxResult {
+                                            code: ErrorCodes::DecryptedGasLimit.into(),
+                                            info: "Decrypted transaction requires more gas than allocated by the corresponding wrapper".to_string()
+                                        };
+                                }
                             }
+
                             TxResult {
                                 code: ErrorCodes::Ok.into(),
                                 info: "Process Proposal accepted this \

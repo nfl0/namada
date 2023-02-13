@@ -990,6 +990,8 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use chrono::{TimeZone, Utc};
     use proptest::prelude::*;
     use proptest::test_runner::Config;
@@ -1085,6 +1087,7 @@ mod tests {
                 faucet_account: None,
                 #[cfg(not(feature = "mainnet"))]
                 wrapper_tx_fees: None,
+                gas_table: BTreeMap::default()
             };
             parameters.init_storage(&mut wl_storage).unwrap();
 
