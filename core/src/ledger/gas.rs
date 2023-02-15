@@ -37,7 +37,7 @@ pub struct BlockGasMeter {
 #[derive(Debug)]
 pub struct TxGasMeter {
     /// The gas limit for a transaction
-    pub tx_gas_limit: u64, //FIXME: should this be optional? Not if we don't need this for wrappers
+    pub tx_gas_limit: u64,
     transaction_gas: u64,
 }
 
@@ -73,7 +73,6 @@ impl BlockGasMeter {
     /// Add the transaction gas to the block's total gas. It will return
     /// error when the consumed gas exceeds the block gas limit, but the state
     /// will still be updated.
-    //FIXME: should tx_gas be Option?
     pub fn finalize_transaction(&mut self, tx_gas: u64) -> Result<()> {
         self.block_gas = self
             .block_gas
@@ -149,7 +148,6 @@ impl VpGasMeter {
     /// Initialize a new VP gas meter, starting with the gas consumed in the
     /// transaction so far. Also requires the transaction gas limit.
     pub fn new(tx_gas_limit: u64, initial_gas: u64) -> Self {
-        //FIXME: substitute new methof with a From<TxGasMeter>?
         Self {
             tx_gas_limit,
             initial_gas,

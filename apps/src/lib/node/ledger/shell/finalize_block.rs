@@ -288,9 +288,7 @@ where
                                 has_valid_pow,
                             },
                         );
-                        // No transaction gas limit for wrappers
-                        // FIXME: should the gas meter be optional?
-                        //FIXME: set it to the wrapper gas limit?
+                        // Wrappers do not account for gas
                         (tx_event, None, TxGasMeter::new(0))
                     }
                     TxType::Decrypted(inner) => {
@@ -445,7 +443,6 @@ where
                     tx_event["gas_used"] =
                         tx_gas_meter.get_current_transaction_gas().to_string();
                     tx_event["info"] = msg.to_string();
-                    //FIXME: if gas error return a different code?
                     tx_event["code"] = ErrorCodes::WasmRuntimeError.into();
                 }
             }

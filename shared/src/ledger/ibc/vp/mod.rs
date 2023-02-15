@@ -389,7 +389,7 @@ mod tests {
     };
 
     const ADDRESS: Address = Address::Internal(InternalAddress::Ibc);
-    const BLOCK_GAS_LIMIT: u64 = 0;
+    const TX_GAS_LIMIT: u64 = 1_000_000; //FIXME: correct value for this
 
     fn get_client_id() -> ClientId {
         ClientId::from_str("test_client").expect("Creating a client ID failed")
@@ -613,7 +613,7 @@ mod tests {
         let tx =
             Tx::new(tx_code, Some(tx_data), storage.chain_id.clone(), None)
                 .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
         let mut keys_changed = BTreeSet::new();
@@ -649,7 +649,7 @@ mod tests {
         let tx =
             Tx::new(tx_code, Some(tx_data), storage.chain_id.clone(), None)
                 .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -742,7 +742,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -807,7 +807,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -860,7 +860,7 @@ mod tests {
         let tx =
             Tx::new(tx_code, Some(tx_data), storage.chain_id.clone(), None)
                 .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -956,7 +956,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1056,7 +1056,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1140,7 +1140,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1210,7 +1210,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1299,7 +1299,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1399,7 +1399,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1496,7 +1496,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1537,7 +1537,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1579,7 +1579,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1671,7 +1671,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1768,7 +1768,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1873,7 +1873,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -1969,7 +1969,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
 
@@ -2076,7 +2076,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
         let mut keys_changed = BTreeSet::new();
@@ -2130,7 +2130,7 @@ mod tests {
             None,
         )
         .sign(&keypair_1());
-        let gas_meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 0);
+        let gas_meter = VpGasMeter::new(TX_GAS_LIMIT, 0);
         let (vp_wasm_cache, _vp_cache_dir) =
             wasm::compilation_cache::common::testing::cache();
         let mut keys_changed = BTreeSet::new();

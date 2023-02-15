@@ -99,7 +99,6 @@ where
             has_valid_pow,
         }) => {
             //FIXME: how to get the hash of the transaction? Isn't it signed?
-            //FIXME: finalize block gas meter before every error?
             let verifiers = execute_tx(
                 &tx,
                 &tx_index,
@@ -135,14 +134,7 @@ where
                 ibc_event,
             })
         }
-        _ => {
-            //FIXME: account for wrapper gas here? Maybe not
-            let gas_used = tx_gas_meter.get_current_transaction_gas();
-            Ok(TxResult {
-                gas_used,
-                ..Default::default()
-            })
-        }
+        _ => Ok(TxResult::default()),
     }
 }
 
@@ -214,7 +206,7 @@ where
         vp_wasm_cache,
         #[cfg(not(feature = "mainnet"))]
         has_valid_pow,
-    )?; //FIXME: do we still account for the gas used even in case of an error? Actullay we don't care if it fails it fails Actullay we don't care if it fails it fails
+    )?;
     tracing::debug!("Total VPs gas cost {:?}", vps_result.gas_used);
 
     tx_gas_meter
@@ -437,7 +429,7 @@ where
 fn merge_vp_results(
     a: VpsResult,
     mut b: VpsResult,
-    max_block_gas: u64,
+    tx_gas_limit: u64,
     initial_gas: u64,
 ) -> Result<VpsResult> {
     let mut accepted_vps = a.accepted_vps;
@@ -453,7 +445,7 @@ fn merge_vp_results(
     // gas costs
 
     gas_used
-        .merge(&mut b.gas_used, max_block_gas, initial_gas)
+        .merge(&mut b.gas_used, tx_gas_limit, initial_gas)
         .map_err(Error::GasError)?;
 
     Ok(VpsResult {

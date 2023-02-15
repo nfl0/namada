@@ -139,8 +139,6 @@ where
             entrypoint: TX_ENTRYPOINT,
             error,
         })?;
-    //FIXME: need to commit the gas used to block gas meter even i ncase of failure here
-    //FIXME: or do it in the caller function
     match apply_tx
         .call(tx_data_ptr, tx_data_len)
         .map_err(Error::RuntimeError)
@@ -422,7 +420,7 @@ mod tests {
     use crate::types::validity_predicate::EvalVp;
     use crate::vm::wasm;
 
-    const TX_GAS_LIMIT: u64 = 0; //FIXME: correct value
+    const TX_GAS_LIMIT: u64 = 1_000_000; //FIXME: correct value
 
     /// Test that when a transaction wasm goes over the stack-height limit, the
     /// execution is aborted.
