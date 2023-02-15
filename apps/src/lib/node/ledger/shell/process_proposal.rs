@@ -351,15 +351,21 @@ where
                                     }
                                 }
 
-                                let tx_hash = Hash::sha256(tx.code)
-                                    .to_string()
-                                    .to_lowercase();
-                                let tx_gas_required =
-                                    gas_table[tx_hash.as_str()];
-                                if tx_gas_required
-                                    > u64::from(&wrapper.tx.gas_limit)
-                                {
-                                    return TxResult {
+                                    // Tx gas (partial check)
+                                    let tx_hash = Hash::sha256(tx.code)
+                                        .to_string()
+                                        .to_lowercase();
+                                    let tx_gas_required = match gas_table.get(tx_hash.as_str()) {
+                                        Some(gas) => gas.to_owned(),
+                                        None => return TxResult {
+                                            // Tx is not whitelisted
+                                          code: ErrorCodes::Undecryptable.into(),
+                                            info: "Tx is not whitelisted".to_string()   
+                                        }
+                                    };
+                                    if let Err(_) = TxGasMeter::new(u64::from(&wrapper.tx.gas_limit)).add(tx_gas_required) {
+                                        
+ return TxResult {
                                             code: ErrorCodes::DecryptedGasLimit.into(),
                                             info: "Decrypted transaction requires more gas than allocated by the corresponding wrapper".to_string()
                                         };
