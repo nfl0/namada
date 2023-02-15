@@ -12,6 +12,7 @@ use namada::ledger::pos::{
 };
 use namada::ledger::protocol;
 use namada::ledger::storage_api::{StorageRead, StorageWrite};
+use namada::proof_of_stake::types::WeightedValidator;
 use namada::proof_of_stake::{
     delegator_rewards_products_handle, find_validator_by_raw_hash,
     read_last_block_proposer_address, read_pos_params, read_total_stake,
@@ -79,6 +80,9 @@ where
             "Block height: {height}, epoch: {current_epoch}, new epoch: \
              {new_epoch}."
         );
+
+        println!("BYZANTINE VALIDATORS:");
+        dbg!(&self.byzantine_validators);
 
         if new_epoch {
             namada::ledger::storage::update_allowed_conversions(
@@ -765,11 +769,15 @@ mod test_finalize_block {
     use namada::ledger::storage_api;
     //    use data_encoding::HEXUPPER;
     use namada::proof_of_stake::btree_set::BTreeSetShims;
-    use namada::proof_of_stake::types::WeightedValidator;
+    use namada::proof_of_stake::types::{
+        Slash, ValidatorState, WeightedValidator,
+    };
     use namada::proof_of_stake::{
         read_consensus_validator_set_addresses_with_stake,
-        rewards_accumulator_handle, validator_consensus_key_handle,
-        validator_rewards_products_handle,
+        read_num_consensus_validators, rewards_accumulator_handle,
+        slashes_handle, validator_consensus_key_handle,
+        validator_rewards_products_handle, validator_slashes_handle,
+        validator_state_handle, write_current_block_proposer_address,
     };
     use namada::types::governance::ProposalVote;
     use namada::types::storage::Epoch;
@@ -779,6 +787,7 @@ mod test_finalize_block {
     };
     use namada::types::transaction::{EncryptionKey, Fee, WrapperTx, MIN_FEE};
     use rust_decimal_macros::dec;
+    use tendermint_proto::abci::{Misbehavior, Validator};
     use test_log::test;
 
     use super::*;
@@ -1354,7 +1363,7 @@ mod test_finalize_block {
         // FINALIZE BLOCK 1. Tell Namada that val1 is the block proposer. We
         // won't receive votes from TM since we receive votes at a 1-block
         // delay, so votes will be empty here
-        next_block_for_inflation(&mut shell, pkh1.clone(), vec![]);
+        next_block_for_inflation(&mut shell, pkh1.clone(), vec![], None);
         assert!(
             rewards_accumulator_handle()
                 .is_empty(&shell.wl_storage)
@@ -1364,7 +1373,7 @@ mod test_finalize_block {
         // FINALIZE BLOCK 2. Tell Namada that val1 is the block proposer.
         // Include votes that correspond to block 1. Make val2 the next block's
         // proposer.
-        next_block_for_inflation(&mut shell, pkh2.clone(), votes.clone());
+        next_block_for_inflation(&mut shell, pkh2.clone(), votes.clone(), None);
         assert!(rewards_prod_1.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_2.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_3.is_empty(&shell.wl_storage).unwrap());
@@ -1387,7 +1396,7 @@ mod test_finalize_block {
         );
 
         // FINALIZE BLOCK 3, with val1 as proposer for the next block.
-        next_block_for_inflation(&mut shell, pkh1.clone(), votes);
+        next_block_for_inflation(&mut shell, pkh1.clone(), votes, None);
         assert!(rewards_prod_1.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_2.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_3.is_empty(&shell.wl_storage).unwrap());
@@ -1431,7 +1440,7 @@ mod test_finalize_block {
 
         // FINALIZE BLOCK 4. The next block proposer will be val1. Only val1,
         // val2, and val3 vote on this block.
-        next_block_for_inflation(&mut shell, pkh1.clone(), votes.clone());
+        next_block_for_inflation(&mut shell, pkh1.clone(), votes.clone(), None);
         assert!(rewards_prod_1.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_2.is_empty(&shell.wl_storage).unwrap());
         assert!(rewards_prod_3.is_empty(&shell.wl_storage).unwrap());
@@ -1464,7 +1473,7 @@ mod test_finalize_block {
                 get_rewards_acc(&shell.wl_storage),
                 get_rewards_sum(&shell.wl_storage),
             );
-            next_block_for_inflation(&mut shell, pkh1.clone(), votes.clone());
+            next_block_for_inflation(&mut shell, pkh1.clone(), votes.clone(), None);
         }
         assert!(
             rewards_accumulator_handle()
@@ -1519,13 +1528,189 @@ mod test_finalize_block {
         shell: &mut TestShell,
         proposer_address: Vec<u8>,
         votes: Vec<VoteInfo>,
+        byzantine_validators: Option<Vec<Misbehavior>>,
     ) {
-        let req = FinalizeBlock {
+        let mut req = FinalizeBlock {
             proposer_address,
             votes,
             ..Default::default()
         };
+        if let Some(byz_vals) = byzantine_validators {
+            req.byzantine_validators = byz_vals;
+        }
         shell.finalize_block(req).unwrap();
         shell.commit();
     }
+
+    #[test]
+    fn test_ledger_slashing() {
+        let num_validators = 7_u64;
+        let (mut shell, _) = setup(num_validators);
+        let params = read_pos_params(&shell.wl_storage).unwrap();
+
+        let validator_set: Vec<WeightedValidator> =
+            read_consensus_validator_set_addresses_with_stake(
+                &shell.wl_storage,
+                Epoch::default(),
+            )
+            .unwrap()
+            .into_iter()
+            .collect();
+        // let validator_set_copy = validator_set.clone();
+
+        let val1 = validator_set[0].clone();
+        let val2 = validator_set[1].clone();
+        let _val3 = validator_set[2].clone();
+        let _val4 = validator_set[3].clone();
+        let _val5 = validator_set[4].clone();
+        let _val6 = validator_set[5].clone();
+        let _val7 = validator_set[6].clone();
+
+        let get_pkh = |address, epoch| {
+            let ck = validator_consensus_key_handle(&address)
+                .get(&shell.wl_storage, epoch, &params)
+                .unwrap()
+                .unwrap();
+            let hash_string = tm_consensus_key_raw_hash(&ck);
+            HEXUPPER.decode(hash_string.as_bytes()).unwrap()
+        };
+
+        let mut pkhs: Vec<Vec<u8>> = Vec::new();
+        for validator in &validator_set {
+            assert_eq!(
+                validator_state_handle(&validator.address)
+                    .get(&shell.wl_storage, Epoch::default(), &params)
+                    .unwrap(),
+                Some(ValidatorState::Consensus)
+            );
+            pkhs.push(get_pkh(validator.address.clone(), Epoch::default()));
+        }
+
+        // Finalize block 1
+        next_block_for_inflation(&mut shell, &val1.address, vec![], None);
+        // for validator in &validator_set {
+        //     assert_eq!(
+        //         validator_state_handle(&validator.address)
+        //             .get(&shell.wl_storage, Epoch::default(), &params)
+        //             .unwrap(),
+        //         Some(ValidatorState::Consensus)
+        //     );
+        //     pkhs.push(get_pkh(validator.address.clone(), Epoch::default()));
+        // }
+
+        let pkh1 = pkhs[0].clone();
+        let pkh2 = pkhs[1].clone();
+
+        let votes = get_default_votes(&pkhs, &validator_set);
+        assert!(!votes.is_empty());
+
+        // For block 2, include the evidences found for block 1. Only the type,
+        // height, and validator address are used in Namada
+        let byzantine_validators = vec![
+            Misbehavior {
+                r#type: 1,
+                validator: Some(Validator {
+                    address: pkh1,
+                    power: Default::default(),
+                }),
+                height: 1,
+                time: Default::default(),
+                total_voting_power: Default::default(),
+            },
+            Misbehavior {
+                r#type: 1,
+                validator: Some(Validator {
+                    address: pkh2,
+                    power: Default::default(),
+                }),
+                height: 1,
+                time: Default::default(),
+                total_voting_power: Default::default(),
+            },
+        ];
+        next_block_for_inflation(
+            &mut shell,
+            &val1.address,
+            votes,
+            Some(byzantine_validators),
+        );
+
+        assert_eq!(
+            validator_state_handle(&val1.address)
+                .get(
+                    &shell.wl_storage,
+                    shell.wl_storage.storage.last_epoch,
+                    &params
+                )
+                .unwrap(),
+            Some(ValidatorState::Jailed)
+        );
+        assert_eq!(
+            validator_state_handle(&val2.address)
+                .get(
+                    &shell.wl_storage,
+                    shell.wl_storage.storage.last_epoch,
+                    &params
+                )
+                .unwrap(),
+            Some(ValidatorState::Jailed)
+        );
+        assert_eq!(
+            5_u64,
+            read_num_consensus_validators(&shell.wl_storage).unwrap()
+        );
+
+        let processing_epoch =
+            shell.wl_storage.storage.block.epoch + params.unbonding_len;
+
+        dbg!(
+            &slashes_handle()
+                .at(&Epoch::default())
+                .is_empty(&shell.wl_storage)
+        );
+        dbg!(
+            &slashes_handle()
+                .at(&processing_epoch)
+                .is_empty(&shell.wl_storage)
+        );
+
+        let all_slashes: Vec<_> = slashes_handle()
+            .at(&processing_epoch)
+            .iter(&shell.wl_storage)
+            .unwrap()
+            .collect();
+
+        dbg!(&all_slashes);
+        let val1_slashes: Vec<Slash> = validator_slashes_handle(&val1.address)
+            .iter(&shell.wl_storage)
+            .unwrap()
+            .map(|a| a.unwrap())
+            .collect();
+        let val2_slashes: Vec<Slash> = validator_slashes_handle(&val2.address)
+            .iter(&shell.wl_storage)
+            .unwrap()
+            .map(|a| a.unwrap())
+            .collect();
+
+        dbg!(&val1_slashes, &val2_slashes);
+        assert!(val1_slashes.len() == 1 && val1_slashes[0].block_height == 1);
+        assert!(val2_slashes.len() == 1 && val2_slashes[0].block_height == 1);
+    }
+}
+
+fn get_default_votes(
+    addresses: &Vec<Vec<u8>>,
+    powers: &Vec<WeightedValidator>,
+) -> Vec<VoteInfo> {
+    let mut votes = vec![];
+    if addresses.len() == powers.len() {
+        for i in 0..addresses.len() {
+            votes.push(VoteInfo {
+                validator_address: addresses[i].clone(),
+                validator_vp: u64::from(powers[i].bonded_stake),
+                signed_last_block: true,
+            })
+        }
+    }
+    votes
 }

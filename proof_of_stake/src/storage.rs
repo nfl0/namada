@@ -311,7 +311,8 @@ pub fn slashes_prefix() -> Key {
 
 /// Storage key for all slashes.
 pub fn all_slashes_key() -> Key {
-    slashes_prefix()
+    // slashes_prefix()
+    Key::from(ADDRESS.to_db_key())
         .push(&ALL_SLASHES_KEY.to_owned())
         .expect("Cannot obtain a storage key")
 }
@@ -323,7 +324,7 @@ pub fn validator_slashes_key(validator: &Address) -> Key {
         .expect("Cannot obtain a storage key")
 }
 
-/// NEW: Is storage key for validator's slashes
+/// Is storage key for a validator's slashes
 pub fn is_validator_slashes_key(key: &Key) -> Option<Address> {
     if key.segments.len() >= 5 {
         match &key.segments[..] {

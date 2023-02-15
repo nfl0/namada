@@ -28,7 +28,7 @@ use crate::parameters::testing::arb_pos_params;
 use crate::parameters::PosParams;
 use crate::types::{
     BondDetails, BondId, BondsAndUnbondsDetails, GenesisValidator, Position,
-    ReverseOrdTokenAmount, ValidatorState, WeightedValidator,
+    ReverseOrdTokenAmount, Slash, SlashType, ValidatorState, WeightedValidator,
 };
 use crate::{
     become_validator, below_capacity_validator_set_handle, bond_handle,
@@ -38,10 +38,10 @@ use crate::{
     read_below_capacity_validator_set_addresses_with_stake,
     read_consensus_validator_set_addresses_with_stake,
     read_num_consensus_validators, read_total_stake,
-    read_validator_delta_value, read_validator_stake, staking_token_address,
-    total_deltas_handle, unbond_handle, unbond_tokens, update_validator_deltas,
-    update_validator_set, validator_state_handle, withdraw_tokens,
-    write_validator_address_raw_hash,
+    read_validator_delta_value, read_validator_stake, slashes_handle,
+    staking_token_address, total_deltas_handle, unbond_handle, unbond_tokens,
+    update_validator_deltas, update_validator_set, validator_state_handle,
+    withdraw_tokens, write_validator_address_raw_hash,
 };
 
 proptest! {
@@ -725,6 +725,29 @@ fn test_become_validator_aux(
 
     // Withdraw the self-bond
     withdraw_tokens(&mut s, None, &new_validator, current_epoch).unwrap();
+}
+
+#[test]
+fn scrap_slashes() {
+    let mut storage = TestWlStorage::default();
+    let address = address::testing::established_address_1();
+    let slash = Slash {
+        epoch: Epoch::default(),
+        block_height: 1,
+        r#type: SlashType::DuplicateVote,
+    };
+    let handle = slashes_handle().at(&Epoch::default());
+    dbg!(handle.is_empty(&storage).unwrap());
+
+    handle.at(&address).push(&mut storage, slash).unwrap();
+    dbg!(handle.is_empty(&storage).unwrap());
+
+    let all_slashes: Vec<_> = slashes_handle()
+        .at(&Epoch::default())
+        .iter(&storage)
+        .unwrap()
+        .collect();
+    dbg!(&all_slashes); // Showing a bunch of Errs in storage
 }
 
 #[test]

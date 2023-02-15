@@ -145,9 +145,11 @@ pub type Unbonds = NestedMap<Epoch, LazyMap<Epoch, token::Amount>>;
 
 /// Total unbonded for validators needed for slashing
 /// TODO: (CHECK IF CORRECT BOUNDS)
-pub type ValidatorTotalUnbonded = NestedMap<Epoch, LazyVec<UnbondRecord>>;
+pub type ValidatorUniqueUnbonds = NestedMap<Epoch, LazyVec<UnbondRecord>>;
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug, Clone, BorshSerialize, BorshDeserialize, Hash, PartialEq, Eq,
+)]
 /// TODO: an unbond record
 pub struct UnbondRecord {
     /// Dangus
@@ -387,7 +389,7 @@ pub struct Slash {
 /// their staked tokens at and before the epoch of the slash.
 pub type Slashes = LazyVec<Slash>;
 
-/// A type of slashsable event.
+/// A type of slashable event.
 #[derive(
     Debug,
     Clone,

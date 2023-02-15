@@ -57,18 +57,17 @@ use storage::{
     validator_max_commission_rate_change_key, BondDetails,
     BondsAndUnbondsDetail, BondsAndUnbondsDetails, ReverseOrdTokenAmount,
     RewardsAccumulator, SlashedAmount, UnbondDetails, UnbondRecord,
-    ValidatorTotalUnbonded,
+    ValidatorUniqueUnbonds,
 };
 use thiserror::Error;
 use types::{
-    decimal_mult_i128, decimal_mult_u64, BelowCapacityValidatorSet,
-    BelowCapacityValidatorSets, BondId, Bonds, CommissionRates,
-    ConsensusValidator, ConsensusValidatorSet, ConsensusValidatorSets,
-    EpochedSlashes, GenesisValidator, Position, RewardsProducts, Slash,
-    SlashType, Slashes, TotalDeltas, Unbonds, ValidatorConsensusKeys,
-    ValidatorDeltas, ValidatorPositionAddresses, ValidatorSetPositions,
-    ValidatorSetUpdate, ValidatorState, ValidatorStates, VoteInfo,
-    WeightedValidator,
+    decimal_mult_i128, BelowCapacityValidatorSet, BelowCapacityValidatorSets,
+    BondId, Bonds, CommissionRates, ConsensusValidator, ConsensusValidatorSet,
+    ConsensusValidatorSets, EpochedSlashes, GenesisValidator, Position,
+    RewardsProducts, Slash, SlashType, Slashes, TotalDeltas, Unbonds,
+    ValidatorConsensusKeys, ValidatorDeltas, ValidatorPositionAddresses,
+    ValidatorSetPositions, ValidatorSetUpdate, ValidatorState, ValidatorStates,
+    VoteInfo, WeightedValidator,
 };
 
 /// Address of the PoS account implemented as a native VP
@@ -291,9 +290,9 @@ pub fn unbond_handle(source: &Address, validator: &Address) -> Unbonds {
 }
 
 /// Get the storage handle to a validator's total-unbonded map
-pub fn total_unbonded_handle(validator: &Address) -> ValidatorTotalUnbonded {
+pub fn unique_unbonds_handle(validator: &Address) -> ValidatorUniqueUnbonds {
     let key = storage::validator_total_unbonded_key(validator);
-    ValidatorTotalUnbonded::open(key)
+    ValidatorUniqueUnbonds::open(key)
 }
 
 /// Get the storage handle to a PoS validator's deltas
@@ -1358,6 +1357,7 @@ where
     let params = read_pos_params(storage)?;
     let pipeline_epoch = current_epoch + params.pipeline_len;
 
+    // Make sure source is not some other validator
     if let Some(source) = source {
         if source != validator
             && is_validator(storage, source, &params, pipeline_epoch)?
@@ -1367,15 +1367,13 @@ where
             );
         }
     }
+    // Make sure the target is actually a validator
     if !is_validator(storage, validator, &params, pipeline_epoch)? {
         return Err(BondError::NotAValidator(validator.clone()).into());
     }
-    // TODO: current or pipeline epoch?
-    if validator_state_handle(validator).get(
-        storage,
-        pipeline_epoch,
-        &params,
-    )? == Some(ValidatorState::Jailed)
+    // Make sure the validator is not currently jailed
+    if validator_state_handle(validator).get(storage, current_epoch, &params)?
+        == Some(ValidatorState::Jailed)
     {
         return Err(UnbondError::ValidatorIsJailed(validator.clone()).into());
     }
@@ -1394,12 +1392,11 @@ where
     // }
 
     let source = source.unwrap_or(validator);
-    let _bond_amount_handle = bond_handle(source, validator);
-    let bond_remain_handle = bond_handle(source, validator);
+    let bonds_handle = bond_handle(source, validator);
 
     // Make sure there are enough tokens left in the bond at the pipeline offset
     let pipeline_epoch = current_epoch + params.pipeline_len;
-    let remaining_at_pipeline = bond_remain_handle
+    let remaining_at_pipeline = bonds_handle
         .get_sum(storage, pipeline_epoch, &params)?
         .unwrap_or_default();
     if amount > remaining_at_pipeline {
@@ -1410,22 +1407,19 @@ where
         .into());
     }
 
-    // Iterate thru bonds, find non-zero delta entries starting from most
-    // recent, then start decrementing those values. For every val that gets
-    // decremented down to 0, need a unique unbond object
-
     let unbonds = unbond_handle(source, validator);
     let withdrawable_epoch =
         current_epoch + params.pipeline_len + params.unbonding_len;
     let mut remaining = token::Amount::from_change(amount);
-    let mut amount_after_slashing = amount;
+    let mut amount_after_slashing = token::Change::default();
 
-    // We read all matched bonds into memory to do reverse iteration
+    // Iterate thru bonds, find non-zero delta entries starting from
+    // future-most, then decrement those values. For every val that
+    // gets decremented down to 0, need a unique unbond object.
+    // Read all matched bonds into memory to do reverse iteration
     #[allow(clippy::needless_collect)]
-    let bonds: Vec<Result<_, _>> = bond_remain_handle
-        .get_data_handler()
-        .iter(storage)?
-        .collect();
+    let bonds: Vec<Result<_, _>> =
+        bonds_handle.get_data_handler().iter(storage)?.collect();
 
     // println!("\nBonds before decrementing:");
     // for ep in Epoch::default().iter_range(params.unbonding_len * 3) {
@@ -1450,62 +1444,40 @@ where
             continue;
         }
         let (bond_epoch, bond_amnt) = bond.unwrap();
-        let bond_amnt = token::Amount::from_change(bond_amnt);
+        let bond_amount = token::Amount::from_change(bond_amnt);
 
-        if remaining < bond_amnt {
-            // Decrement the amount in this bond and create the unbond object
-            // with amount `remaining` and starting epoch `bond_epoch`
-            let new_bond_amnt = bond_amnt - remaining;
-            new_bond_values_map.insert(bond_epoch, (new_bond_amnt, remaining));
-            let to_slash = dbg!(get_slashed_amount_of_bond(
-                storage, validator, &params, remaining, bond_epoch,
-            )?);
-            amount_after_slashing -= to_slash;
+        let to_unbond = cmp::min(bond_amount, remaining);
+        let new_bond_amount = bond_amount - to_unbond;
+        new_bond_values_map.insert(bond_epoch, (new_bond_amount, to_unbond));
 
-            // TODO: need to handle a corner case wherein an unbond is submitted
-            // with the same amount and epoch as a previous one before. Perhaps
-            // use the Position type as well?
-            let record = UnbondRecord {
-                amount: remaining,
-                start: bond_epoch,
-            };
-            total_unbonded_handle(validator)
-                .at(&pipeline_epoch)
-                .push(storage, record)?;
+        let to_slash = get_slashed_amount_for_bond(
+            storage, validator, &params, to_unbond, bond_epoch,
+        )?;
+        amount_after_slashing += to_slash;
 
-            remaining = token::Amount::default();
-        } else {
-            // Set the bond remaining delta to 0 then continue decrementing
-            new_bond_values_map
-                .insert(bond_epoch, (token::Amount::default(), bond_amnt));
-            let record = UnbondRecord {
-                amount: bond_amnt,
-                start: bond_epoch,
-            };
-            total_unbonded_handle(validator)
-                .at(&pipeline_epoch)
-                .push(storage, record)?;
+        let record = UnbondRecord {
+            amount: to_unbond,
+            start: bond_epoch,
+        };
+        unique_unbonds_handle(validator)
+            .at(&pipeline_epoch)
+            .push(storage, record)?;
 
-            let to_slash = get_slashed_amount_of_bond(
-                storage, validator, &params, bond_amnt, bond_epoch,
-            )?;
-            amount_after_slashing -= to_slash;
-            remaining -= bond_amnt;
-        }
+        remaining -= to_unbond;
     }
     drop(bond_iter);
 
     // Write the in-memory bond and unbond values back to storage
-    for (bond_epoch, (new_bond_amnt, unbond_amnt)) in
+    for (bond_epoch, (new_bond_amount, unbond_amount)) in
         new_bond_values_map.into_iter()
     {
-        bond_remain_handle.set(storage, new_bond_amnt.into(), bond_epoch, 0)?;
+        bonds_handle.set(storage, new_bond_amount.into(), bond_epoch, 0)?;
         update_unbond(
             &unbonds,
             storage,
             &withdrawable_epoch,
             &bond_epoch,
-            unbond_amnt,
+            unbond_amount,
         )?;
     }
 
@@ -1537,8 +1509,9 @@ where
     Ok(())
 }
 
-fn get_slashed_amount_of_bond<S>(
-    storage: &mut S,
+// TODO: check thru this for understanding
+fn get_slashed_amount_for_bond<S>(
+    storage: &S,
     validator: &Address,
     params: &PosParams,
     amount: token::Amount,
@@ -1549,9 +1522,11 @@ where
 {
     // TODO:
     // 1. consider if cubic slashing window width extends below the bond_epoch
-    // 2. do we want to optimize this calc?
+    // 2. carefully check this logic (Informal-partnership PR 38)
 
-    let mut total_rate = Decimal::default();
+    let mut updated_amount = amount;
+    let mut computed_amounts = HashSet::<SlashedAmount>::new();
+
     let slashes = validator_slashes_handle(validator);
     for slash in slashes.iter(storage)? {
         let Slash {
@@ -1562,17 +1537,90 @@ where
         if infraction_epoch < bond_epoch {
             continue;
         }
-        let rate = get_final_cubic_slash_rate(
+        let mut computed_to_remove = HashSet::<SlashedAmount>::new();
+        for slashed_amount in computed_amounts.iter() {
+            if slashed_amount.epoch + params.unbonding_len < infraction_epoch {
+                updated_amount -= slashed_amount.amount;
+                computed_to_remove.insert(slashed_amount.clone());
+            }
+        }
+        for item in computed_to_remove {
+            computed_amounts.remove(&item);
+        }
+        let slash_rate = get_final_cubic_slash_rate(
             storage,
             params,
             infraction_epoch,
             slash_type,
         )?;
-        // TODO: do I want to simply add these as described in
-        // InformalSystems `unbond` pseudocode?
-        total_rate += rate;
+        computed_amounts.insert(SlashedAmount {
+            amount: decimal_mult_amount(slash_rate, updated_amount),
+            epoch: infraction_epoch,
+        });
     }
-    Ok(decimal_mult_i128(total_rate, amount.change()))
+    let final_amount = updated_amount
+        - computed_amounts
+            .iter()
+            .fold(token::Amount::default(), |sum, amnt| sum + amnt.amount);
+    Ok(final_amount.change())
+}
+
+fn get_slashed_amount_for_unbond<S>(
+    storage: &S,
+    validator: &Address,
+    params: &PosParams,
+    amount: token::Amount,
+    start_epoch: Epoch,
+    end_epoch: Epoch,
+) -> storage_api::Result<token::Change>
+where
+    S: StorageRead,
+{
+    // TODO:
+    // 1. consider if cubic slashing window width extends below the bond_epoch
+    // 2. carefully check this logic (Informal-partnership PR 38)
+
+    let mut updated_amount = amount;
+    let mut computed_amounts = HashSet::<SlashedAmount>::new();
+
+    let slashes = validator_slashes_handle(validator);
+    for slash in slashes.iter(storage)? {
+        let Slash {
+            epoch: infraction_epoch,
+            block_height: _,
+            r#type: slash_type,
+        } = slash?;
+        if infraction_epoch < start_epoch
+            || infraction_epoch >= end_epoch - params.unbonding_len
+        {
+            continue;
+        }
+        let mut computed_to_remove = HashSet::<SlashedAmount>::new();
+        for slashed_amount in computed_amounts.iter() {
+            if slashed_amount.epoch + params.unbonding_len < infraction_epoch {
+                updated_amount -= slashed_amount.amount;
+                computed_to_remove.insert(slashed_amount.clone());
+            }
+        }
+        for item in computed_to_remove {
+            computed_amounts.remove(&item);
+        }
+        let slash_rate = get_final_cubic_slash_rate(
+            storage,
+            params,
+            infraction_epoch,
+            slash_type,
+        )?;
+        computed_amounts.insert(SlashedAmount {
+            amount: decimal_mult_amount(slash_rate, updated_amount),
+            epoch: infraction_epoch,
+        });
+    }
+    let final_amount = updated_amount
+        - computed_amounts
+            .iter()
+            .fold(token::Amount::default(), |sum, amnt| sum + amnt.amount);
+    Ok(final_amount.change())
 }
 
 fn update_unbond<S>(
@@ -1668,15 +1716,18 @@ where
     let source = source.unwrap_or(validator);
 
     let validator_slashes = validator_slashes_handle(validator);
-    // TODO: need some error handling to determine if this unbond even exists?
-    // A handle to an empty location is valid - we just won't see any data
     let unbond_handle = unbond_handle(source, validator);
+    if unbond_handle.is_empty(storage)? {
+        return Err(WithdrawError::NoUnbondFound(BondId {
+            source: source.clone(),
+            validator: validator.clone(),
+        })
+        .into());
+    }
 
-    // let mut slashed = token::Amount::default();
     let mut withdrawable_amount = token::Amount::default();
     let mut unbonds_to_remove: Vec<(Epoch, Epoch)> = Vec::new();
 
-    // TODO: use `find_unbonds`
     for unbond in unbond_handle.iter(storage)? {
         // println!("\nUNBOND ITER\n");
         let (
@@ -1692,54 +1743,19 @@ where
         if withdraw_epoch > current_epoch {
             continue;
         }
-        let mut updated_amount = amount;
-        let mut computed_amounts: HashSet<SlashedAmount> = HashSet::new();
-        for slash in validator_slashes.iter(storage)? {
-            let Slash {
-                epoch,
-                block_height: _,
-                r#type: slash_type,
-            } = slash?;
+        let amount_after_slashing = get_slashed_amount_for_unbond(
+            storage,
+            validator,
+            &params,
+            amount,
+            start_epoch,
+            withdraw_epoch,
+        )?;
 
-            if epoch < start_epoch
-                || epoch >= withdraw_epoch - params.unbonding_len
-            {
-                continue;
-            }
-            // TODO: review this here to make sure consistent with specs from
-            // Informal
-            let mut to_remove = HashSet::<SlashedAmount>::new();
-            for computed in &computed_amounts {
-                if computed.epoch + params.unbonding_len < epoch {
-                    updated_amount -= computed.amount;
-                    to_remove.insert(computed.clone());
-                }
-            }
-            for slashed_amount_obj in to_remove {
-                computed_amounts.remove(&slashed_amount_obj);
-            }
-
-            let slash_rate = get_final_cubic_slash_rate(
-                storage, &params, epoch, slash_type,
-            )?;
-            let to_slash = decimal_mult_amount(slash_rate, updated_amount);
-
-            // TODO: still needed??
-            // slashed += to_slash;
-            computed_amounts.insert(SlashedAmount {
-                amount: to_slash,
-                epoch,
-            });
-        }
-        let amount_after_slashing = updated_amount
-            - computed_amounts
-                .iter()
-                .fold(token::Amount::default(), |sum, val| sum + val.amount);
-
-        withdrawable_amount += amount_after_slashing;
+        withdrawable_amount +=
+            token::Amount::from_change(amount_after_slashing);
         unbonds_to_remove.push((withdraw_epoch, start_epoch));
     }
-    // withdrawable_amount -= slashed;
 
     // Remove the unbond data from storage
     for (withdraw_epoch, start_epoch) in unbonds_to_remove {
@@ -1814,64 +1830,6 @@ where
     commission_handle.set(storage, new_rate, current_epoch, params.pipeline_len)
 }
 
-/// NEW: apply a slash and write it to storage
-pub fn slash_old<S>(
-    storage: &mut S,
-    params: &PosParams,
-    current_epoch: Epoch,
-    evidence_epoch: Epoch,
-    evidence_block_height: impl Into<u64>,
-    slash_type: SlashType,
-    validator: &Address,
-) -> storage_api::Result<()>
-where
-    S: StorageRead + StorageWrite,
-{
-    let rate = slash_type.get_slash_rate(params);
-    let slash = Slash {
-        epoch: evidence_epoch,
-        block_height: evidence_block_height.into(),
-        r#type: slash_type,
-    };
-
-    let current_stake =
-        read_validator_stake(storage, params, validator, current_epoch)?
-            .unwrap_or_default();
-    let slashed_amount = decimal_mult_u64(rate, u64::from(current_stake));
-    let token_change = -token::Change::from(slashed_amount);
-
-    // Update validator sets and deltas at the pipeline length
-    update_validator_set(
-        storage,
-        params,
-        validator,
-        token_change,
-        current_epoch,
-    )?;
-    update_validator_deltas(
-        storage,
-        params,
-        validator,
-        token_change,
-        current_epoch,
-    )?;
-    update_total_deltas(storage, params, token_change, current_epoch)?;
-
-    // Write the validator slash to storage
-    validator_slashes_handle(validator).push(storage, slash)?;
-
-    // Transfer the slashed tokens from PoS account to Slash Fund address
-    transfer_tokens(
-        storage,
-        &staking_token_address(),
-        token::Amount::from(slashed_amount),
-        &ADDRESS,
-        &SLASH_POOL_ADDRESS,
-    )?;
-
-    Ok(())
-}
-
 /// Transfer tokens between accounts
 /// TODO: may want to move this into core crate
 pub fn transfer_tokens<S>(
@@ -1919,7 +1877,7 @@ where
     Ok(())
 }
 
-/// NEW: Get the total bond amount for a given bond ID at a given epoch
+/// Get the total bond amount, including slashes, for a given bond ID and epoch
 pub fn bond_amount<S>(
     storage: &S,
     params: &PosParams,
@@ -1940,17 +1898,26 @@ where
         // if bond_epoch > epoch {
         //     break;
         // }
-        for slash in slashes.iter() {
+
+        // TODO: do we need to consider the adjusted amounts of previous bonds
+        // and their slashes when iterating?
+        for slash in &slashes {
             let Slash {
                 epoch: slash_epoch,
                 block_height: _,
                 r#type: slash_type,
             } = slash;
-            if slash_epoch > &bond_epoch {
+            if *slash_epoch < bond_epoch {
                 continue;
             }
-            let current_slashed =
-                decimal_mult_i128(slash_type.get_slash_rate(params), delta);
+            // TODO: consider edge cases with the cubic slashing window
+            let cubic_rate = get_final_cubic_slash_rate(
+                storage,
+                params,
+                *slash_epoch,
+                slash_type.clone(),
+            )?;
+            let current_slashed = decimal_mult_i128(cubic_rate, delta);
             let delta = token::Amount::from_change(delta - current_slashed);
             total += delta;
             if bond_epoch <= epoch {
@@ -2159,7 +2126,7 @@ where
     validator_slashes_handle(validator).iter(storage)?.collect()
 }
 
-/// Find bond deltas for the given source and validator address.
+/// Find raw bond deltas for the given source and validator address.
 pub fn find_bonds<S>(
     storage: &S,
     source: &Address,
@@ -2174,7 +2141,7 @@ where
         .collect()
 }
 
-/// Find unbond deltas for the given source and validator address.
+/// Find raw unbond deltas for the given source and validator address.
 pub fn find_unbonds<S>(
     storage: &S,
     source: &Address,
@@ -2228,6 +2195,8 @@ pub fn find_all_slashes<S>(
 where
     S: StorageRead,
 {
+    // TODO: do we want to look into the `all_slashes` prefix or the
+    // `validator_slashes` prefix?
     let mut slashes: HashMap<Address, Vec<Slash>> = HashMap::new();
     let slashes_iter = storage_api::iter_prefix_bytes(
         storage,
@@ -2449,21 +2418,32 @@ where
     Ok(HashMap::from_iter([(bond_id, details)]))
 }
 
+// TODO: update for cubic slashing
 fn make_bond_details<S>(
-    _storage: &S,
+    storage: &S,
     params: &PosParams,
     validator: &Address,
     change: token::Change,
     start: Epoch,
     slashes: &[Slash],
     applied_slashes: &mut HashMap<Address, HashSet<Slash>>,
-) -> BondDetails {
+) -> BondDetails
+where
+    S: StorageRead,
+{
     let amount = token::Amount::from_change(change);
     let slashed_amount =
         slashes
             .iter()
             .fold(None, |acc: Option<token::Amount>, slash| {
                 if slash.epoch >= start {
+                    let slash_rate = get_final_cubic_slash_rate(
+                        storage,
+                        params,
+                        slash.epoch,
+                        slash.r#type.clone(),
+                    )
+                    .unwrap();
                     let validator_slashes =
                         applied_slashes.entry(validator.clone()).or_default();
                     if !validator_slashes.contains(slash) {
@@ -2471,10 +2451,7 @@ fn make_bond_details<S>(
                     }
                     return Some(
                         acc.unwrap_or_default()
-                            + mult_change_to_amount(
-                                slash.r#type.get_slash_rate(params),
-                                change,
-                            ),
+                            + mult_change_to_amount(slash_rate, change),
                     );
                 }
                 None
@@ -2486,15 +2463,19 @@ fn make_bond_details<S>(
     }
 }
 
+// TODO: update for cubic slashing
 fn make_unbond_details<S>(
-    _storage: &S,
+    storage: &S,
     params: &PosParams,
     validator: &Address,
     amount: token::Amount,
     (start, withdraw): (Epoch, Epoch),
     slashes: &[Slash],
     applied_slashes: &mut HashMap<Address, HashSet<Slash>>,
-) -> UnbondDetails {
+) -> UnbondDetails
+where
+    S: StorageRead,
+{
     let slashed_amount =
         slashes
             .iter()
@@ -2505,6 +2486,13 @@ fn make_unbond_details<S>(
                             .checked_sub(Epoch(params.unbonding_len))
                             .unwrap_or_default()
                 {
+                    let slash_rate = get_final_cubic_slash_rate(
+                        storage,
+                        params,
+                        slash.epoch,
+                        slash.r#type.clone(),
+                    )
+                    .unwrap();
                     let validator_slashes =
                         applied_slashes.entry(validator.clone()).or_default();
                     if !validator_slashes.contains(slash) {
@@ -2512,10 +2500,7 @@ fn make_unbond_details<S>(
                     }
                     return Some(
                         acc.unwrap_or_default()
-                            + decimal_mult_amount(
-                                slash.r#type.get_slash_rate(params),
-                                amount,
-                            ),
+                            + decimal_mult_amount(slash_rate, amount),
                     );
                 }
                 None
@@ -2580,6 +2565,12 @@ where
                 "Unable to read native address of validator from tendermint \
                  raw hash",
             );
+        // Ensure that the validator is not currently jailed or other
+        let state = validator_state_handle(&native_address)
+            .get(storage, epoch, &params)?;
+        if state != Some(ValidatorState::Consensus) {
+            continue;
+        }
 
         signer_set.insert(native_address.clone());
         total_signing_stake += vote.validator_vp;
@@ -2666,8 +2657,6 @@ where
     Ok(())
 }
 
-// Some cubic slashing stuff - may want to move into its own file
-
 /// Get the storage handle to a PoS validator's deltas
 pub fn slashes_handle() -> EpochedSlashes {
     let key = storage::all_slashes_key();
@@ -2751,6 +2740,7 @@ pub fn slash<S>(
 where
     S: StorageRead + StorageWrite,
 {
+    println!("SLASHING ON NEW EVIDENCE");
     // Upon slash detection, write the slash to the validator storage, write it
     // to EpochedSlashes at the processing epoch, jail the validator, and then
     // immediately remove it from the validator set
@@ -2804,28 +2794,32 @@ where
             let pipeline_epoch = current_epoch + params.pipeline_len;
             let below_capacity_handle =
                 below_capacity_validator_set_handle().at(&pipeline_epoch);
-            let max_below_capacity_amount =
-                get_max_below_capacity_validator_amount(
-                    &below_capacity_handle,
+
+            if !below_capacity_handle.is_empty(storage)? {
+                let max_below_capacity_amount =
+                    get_max_below_capacity_validator_amount(
+                        &below_capacity_handle,
+                        storage,
+                    )?;
+                let position_to_promote = find_first_position(
+                    &below_capacity_handle
+                        .at(&max_below_capacity_amount.into()),
                     storage,
+                )?
+                .expect("Should return a position.");
+                let removed_validator = below_capacity_handle
+                    .at(&max_below_capacity_amount.into())
+                    .remove(storage, &position_to_promote)?
+                    .expect("Should have returned a removed validator.");
+                insert_validator_into_set(
+                    &consensus_validator_set_handle()
+                        .at(&pipeline_epoch)
+                        .at(&max_below_capacity_amount),
+                    storage,
+                    &pipeline_epoch,
+                    &removed_validator,
                 )?;
-            let position_to_promote = find_first_position(
-                &below_capacity_handle.at(&max_below_capacity_amount.into()),
-                storage,
-            )?
-            .expect("Should return a position.");
-            let removed_validator = below_capacity_handle
-                .at(&max_below_capacity_amount.into())
-                .remove(storage, &position_to_promote)?
-                .expect("Should have returned a removed validator.");
-            insert_validator_into_set(
-                &consensus_validator_set_handle()
-                    .at(&pipeline_epoch)
-                    .at(&max_below_capacity_amount),
-                storage,
-                &pipeline_epoch,
-                &removed_validator,
-            )?;
+            }
         }
         ValidatorState::BelowCapacity => {
             todo!();
@@ -2838,6 +2832,7 @@ where
             );
         }
     }
+    println!("\nWRITING VALIDATOR STATE AS JAILED IN EPOCH {current_epoch}\n");
     validator_state_handle(validator).set(
         storage,
         ValidatorState::Jailed,
@@ -2871,6 +2866,7 @@ where
     // Slashes to be processed in the current epoch
     let enqueued_slashes = slashes_handle().at(&current_epoch);
     if enqueued_slashes.is_empty(storage)? {
+        println!("No slashes found");
         return Ok(());
     }
     println!("Found slashes");
@@ -2953,7 +2949,7 @@ where
 
         let mut total_unbonded = token::Amount::default();
         for epoch in (slash.epoch.0 + 1)..=current_epoch.0 {
-            let unbonds = total_unbonded_handle(&validator).at(&Epoch(epoch));
+            let unbonds = unique_unbonds_handle(&validator).at(&Epoch(epoch));
             for unbond in unbonds.iter(storage)? {
                 let UnbondRecord { amount, start } = unbond?;
                 if start <= slash.epoch {
@@ -2966,7 +2962,7 @@ where
         let mut last_slash = token::Amount::default();
         for offset in 1..=params.unbonding_len {
             let unbonds =
-                total_unbonded_handle(&validator).at(&(current_epoch + offset));
+                unique_unbonds_handle(&validator).at(&(current_epoch + offset));
             for unbond in unbonds.iter(storage)? {
                 let UnbondRecord { amount, start } = unbond?;
                 if start <= slash.epoch {
