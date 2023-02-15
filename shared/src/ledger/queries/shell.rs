@@ -69,22 +69,21 @@ where
     D: 'static + DB + for<'iter> DBIter<'iter> + Sync,
     H: 'static + StorageHasher + Sync,
 {
+    use namada_core::ledger::gas::TxGasMeter;
     use namada_core::ledger::parameters;
 
-    use crate::ledger::gas::BlockGasMeter;
     use crate::ledger::protocol;
     use crate::ledger::storage::write_log::WriteLog;
     use crate::proto::Tx;
     use crate::types::storage::TxIndex;
     use crate::types::transaction::{DecryptedTx, TxType};
 
-    let block_gas_limit: u64 = ctx
-        .wl_storage
-        .read(&parameters::storage::get_max_block_gas_key())
-        .expect("Error while reading storage key")
-        .expect("Missing parameter in storage");
-
-    let mut gas_meter = BlockGasMeter::new(block_gas_limit);
+    let mut tx_gas_meter = TxGasMeter::new(
+        ctx.wl_storage
+            .read(&parameters::storage::get_max_block_gas_key())
+            .expect("Error while reading storage key")
+            .expect("Missing parameter in storage"),
+    );
     let mut write_log = WriteLog::default();
     let tx = Tx::try_from(&request.data[..]).into_storage_result()?;
     let tx = TxType::Decrypted(DecryptedTx::Decrypted {
@@ -95,7 +94,7 @@ where
     let data = protocol::apply_tx(
         tx,
         TxIndex(0),
-        &mut gas_meter,
+        &mut tx_gas_meter,
         &mut write_log,
         &ctx.wl_storage.storage,
         &mut ctx.vp_wasm_cache,

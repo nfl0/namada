@@ -2,6 +2,7 @@
 
 use namada::core::hints;
 use namada::core::ledger::parameters;
+use namada::ledger::gas::BlockGasMeter;
 use namada::ledger::storage::{DBIter, StorageHasher, DB};
 use namada::proof_of_stake::pos_queries::PosQueries;
 use namada::proto::Tx;
@@ -129,9 +130,13 @@ where
             // valid because of mempool check
             TryInto::<DateTimeUtc>::try_into(block_time).ok()
         });
-        let max_block_gas: u64 = self
-            .read_storage_key(&parameters::storage::get_max_block_gas_key())
-            .expect("Missing max_block_gas parameter in storage");
+        let mut temp_block_gas_meter =
+            BlockGasMeter::new(
+                self.read_storage_key(
+                    &parameters::storage::get_max_block_gas_key(),
+                )
+                .expect("Missing max_block_gas parameter in storage"),
+            );
 
         let txs = txs
             .iter()
@@ -146,7 +151,7 @@ where
                     if let Ok(TxType::Wrapper(ref wrapper)) = process_tx(tx) {
 
 // Check tx gas limit
-        if u64::from(&wrapper.gas_limit) <= max_block_gas {
+                    if temp_block_gas_meter.try_finalize_transaction(wrapper.gas_limit.clone().into()).is_ok() {
                         return Some(tx_bytes.clone());
         }
                     }

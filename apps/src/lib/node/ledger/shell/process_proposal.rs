@@ -390,6 +390,22 @@ where
                 }
             }
             TxType::Wrapper(wrapper) => {
+// Account for gas. This is done even if the transaction is later deemed invalid. The block proposer knows whether
+                    // the tx is valid or not so we incentivize the proposer to
+                    // include only valid transaction to avoid wasting block gas limit.
+                    // Max block gas and cumulated block gas
+                                        if let Err(_) = temp_block_gas_meter.finalize_transaction(
+                        
+From::from(&wrapper.gas_limit)                    ) {
+                        return TxResult {
+                            code: ErrorCodes::BlockGasLimit.into(),
+                            
+                            info:
+                    "Wrapper transaction exceeds the maximum block gas limit"
+                        .to_string()
+                        };
+                    }
+                
                 // decrypted txs shouldn't show up before wrapper txs
                 if metadata.has_decrypted_txs {
                     return TxResult {
@@ -437,7 +453,7 @@ where
                     };
                 }
 
-                // Tx expiration
+                                    // Tx expiration
                 if let Some(exp) = tx_expiration {
                     if block_time > exp {
                         return TxResult {
@@ -450,17 +466,6 @@ where
                     }
                 }
 
-                // Max block gas and cumulated block gas
-                if let Err(_) =
-                    temp_block_gas_meter.add(From::from(&wrapper.gas_limit))
-                {
-                    return TxResult {
-                            code: ErrorCodes::BlockGasLimit.into(),
-                            info:
-                    "Wrapper transaction exceeds the maximum block gas limit"
-                        .to_string()
-                            };
-                }
 
                 // validate the ciphertext via Ferveo
                 if !wrapper.validate_ciphertext() {

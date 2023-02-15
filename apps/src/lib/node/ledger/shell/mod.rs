@@ -24,7 +24,7 @@ use std::rc::Rc;
 use borsh::{BorshDeserialize, BorshSerialize};
 use namada::ledger::events::log::EventLog;
 use namada::ledger::events::Event;
-use namada::ledger::gas::BlockGasMeter;
+use namada::ledger::gas::{BlockGasMeter, TxGasMeter};
 use namada::ledger::pos::namada_proof_of_stake::types::{
     ConsensusValidator, ValidatorSetUpdate,
 };
@@ -799,10 +799,13 @@ where
     /// Simulate validation and application of a transaction.
     fn dry_run_tx(&self, tx_bytes: &[u8]) -> response::Query {
         let mut response = response::Query::default();
-        let block_gas_limit: u64 = self
-            .read_storage_key(&parameters::storage::get_max_block_gas_key())
-            .expect("Missing parameter in storage");
-        let mut gas_meter = BlockGasMeter::new(block_gas_limit);
+        let mut gas_meter =
+            TxGasMeter::new(
+                self.read_storage_key(
+                    &parameters::storage::get_max_block_gas_key(),
+                )
+                .expect("Missing parameter in storage"),
+            );
         let mut write_log = WriteLog::default();
         let mut vp_wasm_cache = self.vp_wasm_cache.read_only();
         let mut tx_wasm_cache = self.tx_wasm_cache.read_only();

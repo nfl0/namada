@@ -2,11 +2,12 @@
 use std::collections::BTreeSet;
 use std::panic;
 
+use namada_core::ledger::gas::TxGasMeter;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
 use crate::ledger::eth_bridge::vp::EthBridge;
-use crate::ledger::gas::{self, BlockGasMeter, VpGasMeter};
+use crate::ledger::gas::{self, VpGasMeter};
 use crate::ledger::ibc::vp::{Ibc, IbcToken};
 use crate::ledger::native_vp::governance::GovernanceVp;
 use crate::ledger::native_vp::parameters::{self, ParametersVp};
@@ -79,7 +80,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub fn apply_tx<D, H, CA>(
     tx: TxType,
     tx_index: TxIndex,
-    block_gas_meter: &mut BlockGasMeter,
+    tx_gas_meter: &mut TxGasMeter,
     write_log: &mut WriteLog,
     storage: &Storage<D, H>,
     vp_wasm_cache: &mut VpCache<CA>,
@@ -98,11 +99,12 @@ where
             has_valid_pow,
         }) => {
             //FIXME: how to get the hash of the transaction? Isn't it signed?
+            //FIXME: finalize block gas meter before every error?
             let verifiers = execute_tx(
                 &tx,
                 &tx_index,
                 storage,
-                block_gas_meter,
+                tx_gas_meter,
                 write_log,
                 vp_wasm_cache,
                 tx_wasm_cache,
@@ -112,7 +114,7 @@ where
                 &tx,
                 &tx_index,
                 storage,
-                block_gas_meter,
+                tx_gas_meter,
                 write_log,
                 &verifiers,
                 vp_wasm_cache,
@@ -120,9 +122,7 @@ where
                 has_valid_pow,
             )?;
 
-            let gas_used = block_gas_meter
-                .finalize_transaction()
-                .map_err(Error::GasError)?;
+            let gas_used = tx_gas_meter.get_current_transaction_gas();
             let initialized_accounts = write_log.get_initialized_accounts();
             let changed_keys = write_log.get_keys();
             let ibc_event = write_log.take_ibc_event();
@@ -136,9 +136,8 @@ where
             })
         }
         _ => {
-            let gas_used = block_gas_meter
-                .finalize_transaction()
-                .map_err(Error::GasError)?;
+            //FIXME: account for wrapper gas here? Maybe not
+            let gas_used = tx_gas_meter.get_current_transaction_gas();
             Ok(TxResult {
                 gas_used,
                 ..Default::default()
@@ -152,7 +151,7 @@ fn execute_tx<D, H, CA>(
     tx: &Tx,
     tx_index: &TxIndex,
     storage: &Storage<D, H>,
-    gas_meter: &mut BlockGasMeter,
+    tx_gas_meter: &mut TxGasMeter,
     write_log: &mut WriteLog,
     vp_wasm_cache: &mut VpCache<CA>,
     tx_wasm_cache: &mut TxCache<CA>,
@@ -162,7 +161,7 @@ where
     H: 'static + StorageHasher + Sync,
     CA: 'static + WasmCacheAccess + Sync,
 {
-    gas_meter
+    tx_gas_meter
         .add_compiling_fee(tx.code.len())
         .map_err(Error::GasError)?;
     let empty = vec![];
@@ -170,7 +169,7 @@ where
     wasm::run::tx(
         storage,
         write_log,
-        gas_meter,
+        tx_gas_meter,
         tx_index,
         &tx.code,
         tx_data,
@@ -186,7 +185,7 @@ fn check_vps<D, H, CA>(
     tx: &Tx,
     tx_index: &TxIndex,
     storage: &Storage<D, H>,
-    gas_meter: &mut BlockGasMeter,
+    tx_gas_meter: &mut TxGasMeter,
     write_log: &WriteLog,
     verifiers_from_tx: &BTreeSet<Address>,
     vp_wasm_cache: &mut VpCache<CA>,
@@ -203,8 +202,6 @@ where
     let (verifiers, keys_changed) =
         write_log.verifiers_and_changed_keys(verifiers_from_tx);
 
-    let initial_gas = gas_meter.get_current_transaction_gas();
-
     let vps_result = execute_vps(
         verifiers,
         keys_changed,
@@ -212,15 +209,15 @@ where
         tx_index,
         storage,
         write_log,
-        gas_meter.block_gas_limit,
-        initial_gas,
+        tx_gas_meter.tx_gas_limit,
+        tx_gas_meter.get_current_transaction_gas(),
         vp_wasm_cache,
         #[cfg(not(feature = "mainnet"))]
         has_valid_pow,
-    )?;
+    )?; //FIXME: do we still account for the gas used even in case of an error? Actullay we don't care if it fails it fails Actullay we don't care if it fails it fails
     tracing::debug!("Total VPs gas cost {:?}", vps_result.gas_used);
 
-    gas_meter
+    tx_gas_meter
         .add_vps_gas(&vps_result.gas_used)
         .map_err(Error::GasError)?;
 
@@ -236,7 +233,7 @@ fn execute_vps<D, H, CA>(
     tx_index: &TxIndex,
     storage: &Storage<D, H>,
     write_log: &WriteLog,
-    max_block_gas: u64,
+    tx_gas_limit: u64,
     initial_gas: u64,
     vp_wasm_cache: &mut VpCache<CA>,
     #[cfg(not(feature = "mainnet"))]
@@ -252,7 +249,7 @@ where
     verifiers
         .par_iter()
         .try_fold(VpsResult::default, |mut result, addr| {
-            let mut gas_meter = VpGasMeter::new(max_block_gas, initial_gas);
+            let mut gas_meter = VpGasMeter::new(tx_gas_limit, initial_gas);
             let accept = match &addr {
                 Address::Implicit(_) | Address::Established(_) => {
                     let (vp, gas) = storage
@@ -432,7 +429,7 @@ where
             }
         })
         .try_reduce(VpsResult::default, |a, b| {
-            merge_vp_results(a, b, max_block_gas, initial_gas)
+            merge_vp_results(a, b, tx_gas_limit, initial_gas)
         })
 }
 

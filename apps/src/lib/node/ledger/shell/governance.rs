@@ -167,7 +167,7 @@ where
             let tx_result = protocol::apply_tx(
                 tx_type,
                 TxIndex::default(),
-                &mut BlockGasMeter::default(),
+                &mut TxGasMeter::new(u64::MAX), // No gas limit for governance proposals
                 &mut shell.wl_storage.write_log,
                 &shell.wl_storage.storage,
                 &mut shell.vp_wasm_cache,
