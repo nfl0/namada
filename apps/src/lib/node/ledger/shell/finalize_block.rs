@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 
 use data_encoding::HEXUPPER;
+use std::collections::BTreeMap;
+
 use namada::ledger::gas::TxGasMeter;
 use namada::ledger::parameters::storage as params_storage;
 use namada::ledger::pos::types::{decimal_mult_u64, into_tm_voting_power};
@@ -78,6 +80,9 @@ where
             "Block height: {height}, epoch: {current_epoch}, new epoch: \
              {new_epoch}."
         );
+        let gas_table: BTreeMap<String, u64> = self
+            .read_storage_key(&parameters::storage::get_gas_table_storage_key())
+            .expect("Missing gas table in storage");
 
         if new_epoch {
             namada::ledger::storage::update_allowed_conversions(
@@ -85,7 +90,7 @@ where
             )?;
 
             let _proposals_result =
-                execute_governance_proposals(self, &mut response)?;
+                execute_governance_proposals(self, &mut response, &gas_table)?;
 
             // Copy the new_epoch + pipeline_len - 1 validator set into
             // new_epoch + pipeline_len
@@ -354,6 +359,7 @@ where
                         .expect("transaction index out of bounds"),
                 ),
                 &mut tx_gas_meter,
+                &gas_table,
                 &mut self.wl_storage.write_log,
                 &self.wl_storage.storage,
                 &mut self.vp_wasm_cache,

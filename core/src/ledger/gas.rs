@@ -16,7 +16,7 @@ pub enum Error {
 }
 
 const COMPILE_GAS_PER_BYTE: u64 = 1;
-const PARALLEL_GAS_DIVIDER: u64 = 10; //FIXME: is this needed?
+const PARALLEL_GAS_DIVIDER: u64 = 10;
 
 /// The minimum gas cost for accessing the storage
 pub const MIN_STORAGE_GAS: u64 = 1;

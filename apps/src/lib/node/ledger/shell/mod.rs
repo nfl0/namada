@@ -14,7 +14,7 @@ mod process_proposal;
 mod queries;
 mod stats;
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::convert::{TryFrom, TryInto};
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -799,6 +799,9 @@ where
     /// Simulate validation and application of a transaction.
     fn dry_run_tx(&self, tx_bytes: &[u8]) -> response::Query {
         let mut response = response::Query::default();
+        let gas_table: BTreeMap<String, u64> = self
+            .read_storage_key(&parameters::storage::get_gas_table_storage_key())
+            .expect("Missing gas table in storage");
         let mut gas_meter =
             TxGasMeter::new(
                 self.read_storage_key(
@@ -822,6 +825,7 @@ where
                     tx,
                     TxIndex::default(),
                     &mut gas_meter,
+                    &gas_table,
                     &mut write_log,
                     &self.wl_storage.storage,
                     &mut vp_wasm_cache,

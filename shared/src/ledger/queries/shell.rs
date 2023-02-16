@@ -5,6 +5,7 @@ use masp_primitives::sapling::Node;
 use namada_core::types::address::Address;
 use namada_core::types::hash::Hash;
 use namada_core::types::storage::BlockResults;
+use std::collections::BTreeMap;
 
 use crate::ledger::events::log::dumb_queries;
 use crate::ledger::events::Event;
@@ -78,6 +79,12 @@ where
     use crate::types::storage::TxIndex;
     use crate::types::transaction::{DecryptedTx, TxType};
 
+    let gas_table: BTreeMap<String, u64> = ctx
+        .wl_storage
+        .read(&parameters::storage::get_gas_table_storage_key())
+        .expect("Error while reading storage")
+        .expect("Missing gas table in storage");
+
     let mut tx_gas_meter = TxGasMeter::new(
         ctx.wl_storage
             .read(&parameters::storage::get_max_block_gas_key())
@@ -95,6 +102,7 @@ where
         tx,
         TxIndex(0),
         &mut tx_gas_meter,
+        &gas_table,
         &mut write_log,
         &ctx.wl_storage.storage,
         &mut ctx.vp_wasm_cache,
