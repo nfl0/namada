@@ -1696,21 +1696,21 @@ mod test_finalize_block {
         assert!(val1_slashes.len() == 1 && val1_slashes[0].block_height == 1);
         assert!(val2_slashes.len() == 1 && val2_slashes[0].block_height == 1);
     }
-}
 
-fn get_default_votes(
-    addresses: &Vec<Vec<u8>>,
-    powers: &Vec<WeightedValidator>,
-) -> Vec<VoteInfo> {
-    let mut votes = vec![];
-    if addresses.len() == powers.len() {
-        for i in 0..addresses.len() {
-            votes.push(VoteInfo {
-                validator_address: addresses[i].clone(),
-                validator_vp: u64::from(powers[i].bonded_stake),
-                signed_last_block: true,
-            })
+    fn get_default_votes(
+        addresses: &Vec<Vec<u8>>,
+        powers: &Vec<WeightedValidator>,
+    ) -> Vec<VoteInfo> {
+        let mut votes = vec![];
+        if addresses.len() == powers.len() {
+            for i in 0..addresses.len() {
+                votes.push(VoteInfo {
+                    validator_address: addresses[i].clone(),
+                    validator_vp: u64::from(powers[i].bonded_stake),
+                    signed_last_block: true,
+                })
+            }
         }
+        votes
     }
-    votes
 }
