@@ -129,18 +129,19 @@ pub enum ErrorCodes {
     Ok = 0,
     InvalidDecryptedChainId = 1,
     ExpiredDecryptedTx = 2,
-    WasmRuntimeError = 3,
-    InvalidTx = 4,
-    InvalidSig = 5,
-    InvalidOrder = 6,
-    ExtraTxs = 7,
-    Undecryptable = 8,
-    AllocationError = 9,
-    ReplayTx = 10,
-    InvalidChainId = 11,
-    ExpiredTx = 12,
-    BlockGasLimit = 13,
-    DecryptedGasLimit = 14,
+    DecryptedGasLimit = 3,
+    WasmRuntimeError = 4,
+    InvalidTx = 5,
+    InvalidSig = 6,
+    InvalidOrder = 7,
+    ExtraTxs = 8,
+    Undecryptable = 9,
+    AllocationError = 10,
+    ReplayTx = 11,
+    InvalidChainId = 12,
+    ExpiredTx = 13,
+    BlockGasLimit = 14,
+    TxGasLimit = 15,
 }
 
 impl ErrorCodes {
@@ -158,8 +159,15 @@ impl ErrorCodes {
             | DecryptedGasLimit => true,
             InvalidTx | InvalidSig | InvalidOrder | ExtraTxs
             | Undecryptable | AllocationError | ReplayTx | InvalidChainId
-            | ExpiredTx | BlockGasLimit => false,
+            | ExpiredTx | BlockGasLimit | TxGasLimit => false,
         }
+    }
+}
+
+impl ErrorCodes {
+    /// Whether to charge fees depending on the exit code of a transaction
+    pub fn charges_fee(&self) -> bool {
+        matches!(self, Self::Ok | Self::WasmRuntimeError | Self::TxGasLimit)
     }
 }
 
@@ -707,12 +715,23 @@ where
 
         // Tx type check
         if let TxType::Wrapper(wrapper) = tx_type {
+            // Tx gas limit
+            let mut gas_meter = TxGasMeter::new(u64::from(&wrapper.gas_limit));
+            if let Err(_) = gas_meter.add_tx_size_gas(tx_bytes.len()) {
+                response.code = ErrorCodes::TxGasLimit.into();
+                response.log =
+                    "Wrapper transactions exceeds its gas limit".to_string();
+                return response;
+            }
+
             // Max block gas
-            let max_block_gas: u64 = self
+            let block_gas_limit: u64 = self
                 .read_storage_key(&parameters::storage::get_max_block_gas_key())
                 .expect("Missing max_block_gas parameter in storage");
-
-            if u64::from(&wrapper.gas_limit) > max_block_gas {
+            let mut block_gas_meter = BlockGasMeter::new(block_gas_limit);
+            if let Err(_) = block_gas_meter
+                .finalize_transaction(gas_meter.get_current_transaction_gas())
+            {
                 response.code = ErrorCodes::BlockGasLimit.into();
                 response.log =
                     "Wrapper transaction exceeds the maximum block gas limit"
@@ -1105,15 +1124,17 @@ mod test_utils {
         }
 
         /// Add a wrapper tx to the queue of txs to be decrypted
-        /// in the current block proposal
+        /// in the current block proposal. Takes the length of the encoded wrapper
+        /// as parameter.
         #[cfg(test)]
-        pub fn enqueue_tx(&mut self, wrapper: WrapperTx) {
+        pub fn enqueue_tx(&mut self, wrapper: WrapperTx, inner_tx_gas: u64) {
             self.shell
                 .wl_storage
                 .storage
                 .tx_queue
                 .push(WrapperTxInQueue {
                     tx: wrapper,
+                    gas: inner_tx_gas,
                     #[cfg(not(feature = "mainnet"))]
                     has_valid_pow: false,
                 });
@@ -1209,8 +1230,15 @@ mod test_utils {
             #[cfg(not(feature = "mainnet"))]
             None,
         );
+        let signed_wrapper = wrapper
+            .sign(&keypair, shell.chain_id.clone(), None)
+            .unwrap()
+            .to_bytes();
+        let gas_limit =
+            u64::from(&wrapper.gas_limit) - signed_wrapper.len() as u64;
         shell.wl_storage.storage.tx_queue.push(WrapperTxInQueue {
             tx: wrapper,
+            gas: gas_limit,
             #[cfg(not(feature = "mainnet"))]
             has_valid_pow: false,
         });

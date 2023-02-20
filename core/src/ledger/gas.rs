@@ -15,6 +15,8 @@ pub enum Error {
     GasOverflow,
 }
 
+// FIXME: should this be joined with MI_STOREGE_GAS?
+const TX_SIZE_GAS_PER_BYTE: u64 = 1; //FIXME: value here?
 const COMPILE_GAS_PER_BYTE: u64 = 1;
 const PARALLEL_GAS_DIVIDER: u64 = 10;
 
@@ -131,6 +133,11 @@ impl TxGasMeter {
     /// Add the compiling cost proportionate to the code length
     pub fn add_compiling_fee(&mut self, bytes_len: usize) -> Result<()> {
         self.add(bytes_len as u64 * COMPILE_GAS_PER_BYTE)
+    }
+
+    /// Add the gas for the space that the transaction requires in the block
+    pub fn add_tx_size_gas(&mut self, bytes_len: usize) -> Result<()> {
+        self.add(bytes_len as u64 * TX_SIZE_GAS_PER_BYTE)
     }
 
     /// Add the gas cost used in validity predicates to the current transaction.

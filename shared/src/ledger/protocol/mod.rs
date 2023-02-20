@@ -39,6 +39,8 @@ pub enum Error {
     TxTypeError,
     #[error("Gas error: {0}")]
     GasError(gas::Error),
+    #[error("Insufficient balance to pay fee")]
+    FeeError,
     #[error("Error executing VP for addresses: {0:?}")]
     VpRunnerError(vm::wasm::run::Error),
     #[error("The address {0} doesn't exist")]

@@ -219,6 +219,7 @@ where
             .map(
                 |WrapperTxInQueue {
                      tx,
+                    gas: _, 
                      #[cfg(not(feature = "mainnet"))]
                      has_valid_pow,
                  }| {
@@ -399,7 +400,7 @@ mod test_prepare_proposal {
             let wrapper = wrapper_tx
                 .sign(&keypair, shell.chain_id.clone(), None)
                 .expect("Test failed");
-            shell.enqueue_tx(wrapper_tx);
+            shell.enqueue_tx(wrapper_tx, 0);
             expected_wrapper.push(wrapper.clone());
             req.txs.push(wrapper.to_bytes());
         }
