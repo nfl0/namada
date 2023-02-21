@@ -375,9 +375,11 @@ where
         let iter = storage_api::iter_prefix(storage, &self.get_data_prefix())?;
         Ok(iter.map(|key_val_res| {
             let (key, val) = key_val_res?;
+            dbg!(&key, &val);
             let sub_key = LazyCollection::is_valid_sub_key(self, &key)?
                 .ok_or(ReadError::UnexpectedlyEmptyStorageKey)
                 .into_storage_result()?;
+            dbg!(&sub_key);
             Ok((sub_key, val))
         }))
     }
@@ -523,6 +525,7 @@ where
 mod test {
     use super::*;
     use crate::ledger::storage::testing::TestWlStorage;
+    use crate::ledger::storage_api::collections::LazyVec;
 
     #[test]
     fn test_lazy_map_basics() -> storage_api::Result<()> {
@@ -582,5 +585,31 @@ mod test {
         assert!(lazy_map.len(&storage)? == 0);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_nested_map() {
+        let mut storage = TestWlStorage::default();
+
+        let key = storage::Key::parse("testing").unwrap();
+        let nested_map =
+            NestedMap::<u32, NestedMap<String, LazyVec<u32>>>::open(
+                key.clone(),
+            );
+        nested_map
+            .at(&0_u32)
+            .at(&"string1".to_string())
+            .push(&mut storage, 100_u32)
+            .unwrap();
+
+        storage_api::iter_prefix_bytes(&storage, &key)
+            .unwrap()
+            .for_each(|a| {
+                dbg!(a);
+            });
+
+        nested_map.iter(&storage).unwrap().for_each(|a| {
+            dbg!(a);
+        });
     }
 }

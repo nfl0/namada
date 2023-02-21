@@ -2737,6 +2737,7 @@ where
 
     validator_slashes_handle(validator).push(storage, slash.clone())?;
     slashes_handle()
+        .get_data_handler()
         .at(&processing_epoch)
         .at(validator)
         .push(storage, slash)?;
