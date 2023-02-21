@@ -2877,28 +2877,28 @@ where
     // -----------------------------------------------------------------
     let mut validators_and_slashes: HashMap<Address, Vec<Slash>> =
         HashMap::new();
-    for slash in enqueued_slashes.iter(storage)? {
+    for enqueued_slash in enqueued_slashes.iter(storage)? {
         let (
             NestedSubKey::Data {
                 key: validator,
                 nested_sub_key: _,
             },
-            slash,
-        ) = slash?;
-        debug_assert_eq!(slash.epoch, infraction_epoch);
+            enqueued_slash,
+        ) = enqueued_slash?;
+        debug_assert_eq!(enqueued_slash.epoch, infraction_epoch);
         let mut cur_slashes = validators_and_slashes
             .get(&validator)
             .cloned()
             .unwrap_or_default();
-        cur_slashes.push(slash.clone());
+        cur_slashes.push(enqueued_slash.clone());
         validators_and_slashes.insert(validator.clone(), cur_slashes);
     }
 
     let mut total_slashed = token::Change::default();
     let mut deltas_for_update: Vec<(Address, Epoch, token::Change)> =
         Vec::new();
-    for (validator, slashes) in validators_and_slashes.into_iter() {
-        for slash in &slashes {
+    for (validator, enqueued_slashes) in validators_and_slashes.into_iter() {
+        for enqueued_slash in &enqueued_slashes {
             if validator_state_handle(&validator).get(
                 storage,
                 current_epoch,
@@ -2910,7 +2910,7 @@ where
             let slash_rate = cmp::min(
                 Decimal::ONE,
                 cmp::max(
-                    slash.r#type.get_slash_rate(&params),
+                    enqueued_slash.r#type.get_slash_rate(&params),
                     cubic_slash_rate,
                 ),
             );
@@ -2922,39 +2922,24 @@ where
             )?
             .unwrap_or_default();
 
-            let mut union_unbonded = HashSet::<UnbondRecord>::new();
-            for epoch in (slash.epoch.0 + 1)..=current_epoch.0 {
+            // let mut union_unbonded = HashSet::<UnbondRecord>::new();
+            let mut total_unbonded = token::Amount::default();
+
+            for epoch in (enqueued_slash.epoch.0 + 1)..=current_epoch.0 {
                 let unbonds =
                     unique_unbonds_handle(&validator).at(&Epoch(epoch));
                 for unbond in unbonds.iter(storage)? {
                     let unbond = unbond?;
-                    if unbond.start <= slash.epoch {
-                        union_unbonded.insert(unbond);
-                    }
-                }
-            }
-            let mut total_unbonded = token::Amount::default();
-            let mut last_slash = token::Amount::default();
-            for offset in 1..=params.pipeline_len {
-                let unbonds = unique_unbonds_handle(&validator)
-                    .at(&(current_epoch + offset));
-                for unbond in unbonds.iter(storage)? {
-                    let unbond = unbond?;
-                    if unbond.start <= slash.epoch {
-                        union_unbonded.insert(unbond);
-                    }
-                }
-                for unbond in &union_unbonded {
                     let mut prev_slashes = Vec::<Slash>::new();
-                    for slash in
+                    for val_slash in
                         validator_slashes_handle(&validator).iter(storage)?
                     {
-                        let slash = slash?;
-                        if unbond.start <= slash.epoch
-                            && slash.epoch + params.unbonding_len
-                                < current_epoch + offset
+                        let val_slash = val_slash?;
+                        if unbond.start <= val_slash.epoch
+                            && val_slash.epoch + params.unbonding_len
+                                < enqueued_slash.epoch
                         {
-                            prev_slashes.push(slash);
+                            prev_slashes.push(val_slash);
                         }
                     }
                     total_unbonded +=
@@ -2962,14 +2947,43 @@ where
                             storage,
                             &params,
                             unbond.amount,
-                            slashes.as_slice(),
+                            prev_slashes.as_slice(),
+                        )?);
+                }
+            }
+            let mut last_slash = token::Amount::default();
+            for offset in 1..=params.pipeline_len {
+                let unbonds = unique_unbonds_handle(&validator)
+                    .at(&(current_epoch + offset));
+                for unbond in unbonds.iter(storage)? {
+                    let unbond = unbond?;
+                    if unbond.start > enqueued_slash.epoch {
+                        continue;
+                    }
+                    let mut prev_slashes = Vec::<Slash>::new();
+                    for val_slash in
+                        validator_slashes_handle(&validator).iter(storage)?
+                    {
+                        let val_slash = val_slash?;
+                        if unbond.start <= val_slash.epoch
+                            && val_slash.epoch + params.unbonding_len
+                                < enqueued_slash.epoch
+                        {
+                            prev_slashes.push(val_slash);
+                        }
+                    }
+                    total_unbonded +=
+                        token::Amount::from_change(get_slashed_amount(
+                            storage,
+                            &params,
+                            unbond.amount,
+                            enqueued_slashes.as_slice(),
                         )?);
                 }
                 let this_slash = decimal_mult_amount(
                     slash_rate,
                     validator_stake_at_infraction - total_unbonded,
                 );
-                println!("dbg0.5");
 
                 // TODO: should `diff_slashed_amount` be negative?
                 let diff_slashed_amount = (last_slash - this_slash).change();
