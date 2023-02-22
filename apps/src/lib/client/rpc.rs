@@ -45,7 +45,7 @@ use namada::types::masp::{BalanceOwner, ExtendedViewingKey, PaymentAddress};
 use namada::types::storage::{
     BlockHeight, BlockResults, Epoch, Key, KeySeg, PrefixValue, TxIndex,
 };
-use namada::types::token::{balance_key, Transfer};
+use namada::types::token::Transfer;
 use namada::types::transaction::{
     process_tx, AffineCurve, DecryptedTx, EllipticCurve, PairingEngine, TxType,
     WrapperTx,
@@ -1159,9 +1159,8 @@ pub async fn get_token_balance(
     client: &HttpClient,
     token: &Address,
     owner: &Address,
-) -> Option<token::Amount> {
-    let balance_key = balance_key(token, owner);
-    query_storage_value(client, &balance_key).await
+) -> token::Amount {
+    unwrap_client_response(RPC.vp().token().balance(client, token, owner).await)
 }
 
 pub async fn query_proposal_result(

@@ -1919,8 +1919,7 @@ pub async fn submit_init_proposal(mut ctx: Context, args: args::InitProposal) {
             &ctx.native_token,
             &proposal.author,
         )
-        .await
-        .unwrap_or_default();
+        .await;
         if balance
             < token::Amount::from(governance_parameters.min_proposal_fund)
         {
