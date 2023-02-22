@@ -2,10 +2,14 @@
 pub use pos::Pos;
 use pos::POS;
 mod pos;
+pub use token::Token;
+use token::TOKEN;
+mod token;
 
 // Validity predicate queries
 router! {VP,
     ( "pos" ) = (sub POS),
+    ( "token" ) = (sub TOKEN),
 }
 
 #[cfg(any(test, feature = "async-client"))]

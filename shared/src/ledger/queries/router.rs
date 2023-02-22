@@ -626,6 +626,7 @@ macro_rules! router_type {
     ($name:ident { $( $methods:item )* }, ) => {
         paste::paste! {
             #[doc = "`" $name "`path router type"]
+            #[allow(dead_code)]
             pub struct $name {
                 prefix: String,
             }
@@ -785,7 +786,7 @@ macro_rules! router {
 
 		impl $crate::ledger::queries::Router for [<$name:camel>] {
             // TODO: for some patterns, there's unused assignment of `$end`
-            #[allow(unused_assignments)]
+            #[allow(unused_assignments, unused_variables)]
             fn internal_handle<D, H>(
 			    &self,
                 ctx: $crate::ledger::queries::RequestCtx<'_, D, H>,
@@ -801,6 +802,7 @@ macro_rules! router {
                 use $crate::ledger::storage_api::ResultExt;
 
                 // Import helper from this crate used inside the macros
+                #[allow(unused_imports)]
                 use $crate::ledger::queries::router::find_next_slash_index;
 
 				$(
