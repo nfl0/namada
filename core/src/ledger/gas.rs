@@ -15,7 +15,6 @@ pub enum Error {
     GasOverflow,
 }
 
-// FIXME: should this be joined with MI_STOREGE_GAS?
 const TX_SIZE_GAS_PER_BYTE: u64 = 1; //FIXME: value here?
 const COMPILE_GAS_PER_BYTE: u64 = 1;
 const PARALLEL_GAS_DIVIDER: u64 = 10;
@@ -252,6 +251,7 @@ mod tests {
 
     use super::*;
     const BLOCK_GAS_LIMIT: u64 = 10_000_000_000;
+    const TX_GAS_LIMIT: u64 = 1_000_000;
 
     proptest! {
         #[test]
@@ -281,12 +281,10 @@ mod tests {
 
     #[test]
     fn test_vp_gas_limit() {
-        let mut meter = VpGasMeter::new(BLOCK_GAS_LIMIT, 1);
+        let mut meter = VpGasMeter::new(TX_GAS_LIMIT, 1);
         assert_matches!(
-            meter
-                .add(BLOCK_GAS_LIMIT)
-                .expect_err("unexpectedly succeeded"),
-            Error::BlockGasExceeded
+            meter.add(TX_GAS_LIMIT).expect_err("unexpectedly succeeded"),
+            Error::TransactionGasExceededError
         );
     }
 
@@ -302,11 +300,10 @@ mod tests {
 
     #[test]
     fn test_tx_gas_limit() {
-        let tx_gas_limit = 10;
-        let mut meter = TxGasMeter::new(tx_gas_limit);
+        let mut meter = TxGasMeter::new(TX_GAS_LIMIT);
         assert_matches!(
             meter
-                .add(tx_gas_limit + 1)
+                .add(TX_GAS_LIMIT + 1)
                 .expect_err("unexpectedly succeeded"),
             Error::TransactionGasExceededError
         );

@@ -386,11 +386,11 @@ where
         storage: &'iter impl StorageRead,
     ) -> Result<
         impl Iterator<
-            Item = Result<(
-                <Self as LazyCollection>::SubKey,
-                <Self as LazyCollection>::Value,
-            )>,
-        > + 'iter,
+                Item = Result<(
+                    <Self as LazyCollection>::SubKey,
+                    <Self as LazyCollection>::Value,
+                )>,
+            > + 'iter,
     > {
         let iter = storage_api::iter_prefix(storage, &self.get_data_prefix())?;
         Ok(iter.map(|key_val_res| {

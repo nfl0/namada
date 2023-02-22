@@ -389,7 +389,7 @@ mod tests {
     };
 
     const ADDRESS: Address = Address::Internal(InternalAddress::Ibc);
-    const TX_GAS_LIMIT: u64 = 1_000_000; //FIXME: correct value for this
+    const TX_GAS_LIMIT: u64 = 1_000_000;
 
     fn get_client_id() -> ClientId {
         ClientId::from_str("test_client").expect("Creating a client ID failed")

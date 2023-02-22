@@ -292,6 +292,8 @@ mod test_prepare_proposal {
     use super::*;
     use crate::node::ledger::shell::test_utils::{self, gen_keypair};
 
+    const GAS_LIMIT_MULTIPLIER: u64 = 1;
+
     /// Test that if a tx from the mempool is not a
     /// WrapperTx type, it is not included in the
     /// proposed block.
@@ -391,7 +393,7 @@ mod test_prepare_proposal {
                 },
                 &keypair,
                 Epoch(0),
-                0.into(),
+                GAS_LIMIT_MULTIPLIER.into(),
                 tx,
                 Default::default(),
                 #[cfg(not(feature = "mainnet"))]

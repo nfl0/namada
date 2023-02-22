@@ -267,7 +267,6 @@ where
                         }
 
                         // Account for gas
-                        //FIXME: would be nice to do gas accounting in apply_tx
                         if let Err(e) =
                             gas_meter.add_tx_size_gas(processed_tx.tx.len())
                         {
@@ -281,11 +280,12 @@ where
                             continue;
                         }
 
+                        let spare_gas = u64::from(&wrapper.gas_limit)
+                            - gas_meter.get_current_transaction_gas();
                         self.wl_storage.storage.tx_queue.push(
                             WrapperTxInQueue {
                                 tx: wrapper.clone(),
-                                gas: u64::from(&wrapper.gas_limit)
-                                    - gas_meter.get_current_transaction_gas(),
+                                gas: spare_gas,
                                 #[cfg(not(feature = "mainnet"))]
                                 has_valid_pow,
                             },
@@ -293,7 +293,7 @@ where
                         (
                             tx_event,
                             None,
-                            TxGasMeter::new(u64::from(&wrapper.gas_limit)), //FIXME: place it back to 0
+                            TxGasMeter::new(spare_gas), // This is just for logging/events purposes, no more gas is actually used by the wrapper
                         )
                     }
                     TxType::Decrypted(inner) => {
@@ -414,7 +414,7 @@ where
                         self.wl_storage.drop_tx();
                         tx_event["code"] = ErrorCodes::InvalidTx.into();
                     }
-                    tx_event["gas_used"] = result.gas_used.to_string(); //FIXME: this might be off for wrappers
+                    tx_event["gas_used"] = result.gas_used.to_string();
                     tx_event["info"] = result.to_string();
                 }
                 Err(msg) => {
@@ -980,6 +980,8 @@ mod test_finalize_block {
         FinalizeBlock, ProcessedTx,
     };
 
+    const GAS_LIMIT_MULTIPLIER: u64 = 1;
+
     /// Check that if a wrapper tx was rejected by [`process_proposal`],
     /// check that the correct event is returned. Check that it does
     /// not appear in the queue of txs to be decrypted
@@ -1016,7 +1018,7 @@ mod test_finalize_block {
                 },
                 &keypair,
                 Epoch(0),
-                0.into(),
+                GAS_LIMIT_MULTIPLIER.into(),
                 raw_tx.clone(),
                 Default::default(),
                 #[cfg(not(feature = "mainnet"))]
@@ -1096,7 +1098,7 @@ mod test_finalize_block {
             },
             &keypair,
             Epoch(0),
-            0.into(),
+            GAS_LIMIT_MULTIPLIER.into(),
             raw_tx.clone(),
             Default::default(),
             #[cfg(not(feature = "mainnet"))]
@@ -1160,7 +1162,7 @@ mod test_finalize_block {
             },
             pk: keypair.ref_to(),
             epoch: Epoch(0),
-            gas_limit: 0.into(),
+            gas_limit: GAS_LIMIT_MULTIPLIER.into(),
             inner_tx,
             tx_hash: hash_tx(&tx),
             #[cfg(not(feature = "mainnet"))]
@@ -1244,7 +1246,7 @@ mod test_finalize_block {
                 },
                 &keypair,
                 Epoch(0),
-                0.into(),
+                GAS_LIMIT_MULTIPLIER.into(),
                 raw_tx.clone(),
                 Default::default(),
                 #[cfg(not(feature = "mainnet"))]
@@ -1289,7 +1291,7 @@ mod test_finalize_block {
                 },
                 &keypair,
                 Epoch(0),
-                0.into(),
+                GAS_LIMIT_MULTIPLIER.into(),
                 raw_tx.clone(),
                 Default::default(),
                 #[cfg(not(feature = "mainnet"))]
@@ -1792,7 +1794,7 @@ mod test_finalize_block {
             },
             &keypair,
             Epoch(0),
-            0.into(),
+            GAS_LIMIT_MULTIPLIER.into(),
             raw_tx.clone(),
             Default::default(),
             #[cfg(not(feature = "mainnet"))]

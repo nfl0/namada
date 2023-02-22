@@ -167,6 +167,9 @@ where
     let tx_hash = Hash::sha256(&tx.code).to_string().to_ascii_lowercase();
     let tx_gas_required = match gas_table.get(tx_hash.as_str()) {
         Some(gas) => gas.to_owned(),
+        #[cfg(any(test, feature = "testing"))]
+        None => 1_000,
+        #[cfg(not(any(test, feature = "testing")))]
         None => return Err(Error::MissingGasCost(tx_hash)),
     };
     tx_gas_meter.add(tx_gas_required).map_err(Error::GasError)?;

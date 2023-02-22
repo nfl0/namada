@@ -1054,8 +1054,7 @@ mod test_utils {
             let base_dir = tempdir().unwrap().as_ref().canonicalize().unwrap();
             let vp_wasm_compilation_cache = 50 * 1024 * 1024; // 50 kiB
             let tx_wasm_compilation_cache = 50 * 1024 * 1024; // 50 kiB
-            (
-                Self {
+            let mut shell = Self {
                     shell: Shell::<MockDB, Sha256Hasher>::new(
                         config::Ledger::new(
                             base_dir,
@@ -1069,7 +1068,73 @@ mod test_utils {
                         tx_wasm_compilation_cache,
                         address::nam(),
                     ),
-                },
+                };
+
+ // Initialize gas table
+            let mut checksums: BTreeMap<String, String> = serde_json::from_slice(
+                &std::fs::read("../wasm/checksums.json").unwrap(),
+            )
+            .unwrap();
+            // Extend gas table with test transactions and vps
+            checksums.extend(serde_json::from_slice::<BTreeMap<String, String>>(
+                &std::fs::read("../wasm_for_tests/checksums.json").unwrap(),
+            )
+            .unwrap().into_iter());
+
+            let gas_file: BTreeMap<String, u64> = serde_json::from_slice(
+                &std::fs::read("../wasm/gas.json").unwrap(),
+            )
+            .unwrap();
+
+            let mut gas_table = BTreeMap::<String, u64>::new();            
+
+ for id in checksums.keys().chain(gas_file.keys()){
+                // Get tx/vp hash (or name if native)
+                let hash = match checksums.get(id.as_str()) {
+                    Some(v) => {
+v
+                    .split_once('.')
+                    .unwrap()
+                    .1
+                    .split_once('.')
+                    .unwrap()
+                    .0.to_owned()
+                    }
+                    None => {
+                        id.to_owned()
+                    }
+                };
+                let gas = gas_file.get(id).unwrap_or(&1_000).to_owned();
+                gas_table.insert(hash, gas);
+            }
+
+ 
+            let gas_table_key = 
+                namada::core::ledger::parameters::storage::get_gas_table_storage_key();
+            shell.wl_storage
+                .storage
+                .write(&gas_table_key, 
+                namada::core::ledger::storage::types::encode(&gas_table))
+                .expect(
+                "Gas table parameter must be initialized in the genesis block",
+            );
+            
+ let max_block_gas_key =
+                namada::core::ledger::parameters::storage::get_max_block_gas_key(
+                );
+            shell.wl_storage
+                .storage
+                .write(
+                    &max_block_gas_key,
+                    namada::core::ledger::storage::types::encode(
+                        &10_000_000_u64,
+                    ),
+                )
+                .expect(
+                    "Max block gas parameter must be initialized in storage",
+                );
+            (
+                shell,
                 receiver,
             )
         }
@@ -1224,7 +1289,7 @@ mod test_utils {
             },
             &keypair,
             Epoch(0),
-            0.into(),
+            1.into(),
             tx,
             Default::default(),
             #[cfg(not(feature = "mainnet"))]
@@ -1280,6 +1345,9 @@ mod test_mempool_validate {
 
     use super::test_utils::TestShell;
     use super::{MempoolTxType, *};
+
+    
+const GAS_LIMIT_MULTIPLIER: u64 = 1; 
 
     /// Mempool validation must reject unsigned wrappers
     #[test]
@@ -1460,7 +1528,7 @@ mod test_mempool_validate {
             },
             &keypair,
             Epoch(0),
-            0.into(),
+            GAS_LIMIT_MULTIPLIER.into(),
             tx,
             Default::default(),
             #[cfg(not(feature = "mainnet"))]

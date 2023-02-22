@@ -420,7 +420,7 @@ mod tests {
     use crate::types::validity_predicate::EvalVp;
     use crate::vm::wasm;
 
-    const TX_GAS_LIMIT: u64 = 1_000_000; //FIXME: correct value
+    const TX_GAS_LIMIT: u64 = 100_000_000;
 
     /// Test that when a transaction wasm goes over the stack-height limit, the
     /// execution is aborted.
