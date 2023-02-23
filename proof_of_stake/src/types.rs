@@ -383,6 +383,8 @@ pub struct Slash {
     pub block_height: u64,
     /// A type of slashable event.
     pub r#type: SlashType,
+    /// The cubic slashing rate for this validator
+    pub rate: Decimal,
 }
 
 /// Slashes applied to validator, to punish byzantine behavior by removing

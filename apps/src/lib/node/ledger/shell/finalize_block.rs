@@ -12,7 +12,6 @@ use namada::ledger::pos::{
 };
 use namada::ledger::protocol;
 use namada::ledger::storage_api::{StorageRead, StorageWrite};
-use namada::proof_of_stake::types::WeightedValidator;
 use namada::proof_of_stake::{
     delegator_rewards_products_handle, find_validator_by_raw_hash,
     read_last_block_proposer_address, read_pos_params, read_total_stake,
@@ -777,7 +776,7 @@ mod test_finalize_block {
         read_num_consensus_validators, rewards_accumulator_handle,
         slashes_handle, validator_consensus_key_handle,
         validator_rewards_products_handle, validator_slashes_handle,
-        validator_state_handle, write_current_block_proposer_address,
+        validator_state_handle,
     };
     use namada::types::governance::ProposalVote;
     use namada::types::storage::Epoch;
@@ -1473,7 +1472,12 @@ mod test_finalize_block {
                 get_rewards_acc(&shell.wl_storage),
                 get_rewards_sum(&shell.wl_storage),
             );
-            next_block_for_inflation(&mut shell, pkh1.clone(), votes.clone(), None);
+            next_block_for_inflation(
+                &mut shell,
+                pkh1.clone(),
+                votes.clone(),
+                None,
+            );
         }
         assert!(
             rewards_accumulator_handle()
@@ -1586,8 +1590,11 @@ mod test_finalize_block {
             pkhs.push(get_pkh(validator.address.clone(), Epoch::default()));
         }
 
+        let pkh1 = pkhs[0].clone();
+        let _pkh2 = pkhs[1].clone();
+
         // Finalize block 1
-        next_block_for_inflation(&mut shell, &val1.address, vec![], None);
+        next_block_for_inflation(&mut shell, pkh1, vec![], None);
         // for validator in &validator_set {
         //     assert_eq!(
         //         validator_state_handle(&validator.address)
@@ -1610,7 +1617,7 @@ mod test_finalize_block {
             Misbehavior {
                 r#type: 1,
                 validator: Some(Validator {
-                    address: pkh1,
+                    address: pkh1.clone(),
                     power: Default::default(),
                 }),
                 height: 1,
@@ -1630,7 +1637,7 @@ mod test_finalize_block {
         ];
         next_block_for_inflation(
             &mut shell,
-            &val1.address,
+            pkh1,
             votes,
             Some(byzantine_validators),
         );

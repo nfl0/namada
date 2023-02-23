@@ -20,6 +20,7 @@ use namada_core::types::{address, key, token};
 use proptest::prelude::*;
 use proptest::test_runner::Config;
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 // Use `RUST_LOG=info` (or another tracing level) and `--nocapture` to see
 // `tracing` logs from tests
 use test_log::test;
@@ -735,6 +736,7 @@ fn scrap_slashes() {
         epoch: Epoch::default(),
         block_height: 1,
         r#type: SlashType::DuplicateVote,
+        rate: dec!(0.1),
     };
     let handle = slashes_handle().at(&Epoch::default());
     dbg!(handle.is_empty(&storage).unwrap());

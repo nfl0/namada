@@ -48,16 +48,15 @@ use rewards::PosRewardsCalculator;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use storage::{
-    bonds_for_source_prefix, bonds_prefix, current_block_proposer_key,
-    decimal_mult_amount, get_validator_address_from_bond, into_tm_voting_power,
-    is_bond_key, is_unbond_key, is_validator_slashes_key,
-    last_block_proposer_key, mult_change_to_amount,
-    num_consensus_validators_key, params_key, slashes_prefix,
-    unbonds_for_source_prefix, unbonds_prefix, validator_address_raw_hash_key,
-    validator_max_commission_rate_change_key, BondDetails,
-    BondsAndUnbondsDetail, BondsAndUnbondsDetails, ReverseOrdTokenAmount,
-    RewardsAccumulator, SlashedAmount, UnbondDetails, UnbondRecord,
-    ValidatorUniqueUnbonds,
+    bonds_for_source_prefix, bonds_prefix, decimal_mult_amount,
+    get_validator_address_from_bond, into_tm_voting_power, is_bond_key,
+    is_unbond_key, is_validator_slashes_key, last_block_proposer_key,
+    mult_change_to_amount, num_consensus_validators_key, params_key,
+    slashes_prefix, unbonds_for_source_prefix, unbonds_prefix,
+    validator_address_raw_hash_key, validator_max_commission_rate_change_key,
+    BondDetails, BondsAndUnbondsDetail, BondsAndUnbondsDetails,
+    ReverseOrdTokenAmount, RewardsAccumulator, SlashedAmount, UnbondDetails,
+    UnbondRecord, ValidatorUniqueUnbonds,
 };
 use thiserror::Error;
 use types::{
@@ -1410,6 +1409,7 @@ where
     let unbonds = unbond_handle(source, validator);
     let withdrawable_epoch =
         current_epoch + params.pipeline_len + params.unbonding_len;
+
     let mut remaining = token::Amount::from_change(amount);
     let mut amount_after_slashing = token::Change::default();
 
@@ -1519,7 +1519,9 @@ where
     Ok(())
 }
 
-// TODO: check thru this for understanding
+// Compute a token amount after slashing, given the initial amount and a set of
+// slashes. It is assumed that the input `slashes` are those commited while the
+// `amount` was contributing to voting power.
 fn get_slashed_amount<S>(
     storage: &S,
     params: &PosParams,
@@ -1532,6 +1534,8 @@ where
     // TODO:
     // 1. consider if cubic slashing window width extends below the bond_epoch
     // 2. carefully check this logic (Informal-partnership PR 38)
+    // 3. Should `computed_amounts` consider > 1 identical instances of a
+    // `SlashedAmount`?
 
     let mut updated_amount = amount;
     let mut computed_amounts = HashSet::<SlashedAmount>::new();
@@ -1541,6 +1545,9 @@ where
             (slash.epoch, slash.r#type.clone());
         let mut computed_to_remove = HashSet::<SlashedAmount>::new();
         for slashed_amount in computed_amounts.iter() {
+            // Update amount with slashes that happened more than unbonding_len
+            // epochs before this current slash
+            // TODO: understand this better (from Informal)
             if slashed_amount.epoch + params.unbonding_len < infraction_epoch {
                 updated_amount -= slashed_amount.amount;
                 computed_to_remove.insert(slashed_amount.clone());
@@ -1561,37 +1568,6 @@ where
         });
     }
 
-    // let slashes = validator_slashes_handle(validator);
-    // for slash in slashes.iter(storage)? {
-    //     let Slash {
-    //         epoch: infraction_epoch,
-    //         block_height: _,
-    //         r#type: slash_type,
-    //     } = slash?;
-    //     if infraction_epoch < bond_epoch {
-    //         continue;
-    //     }
-    //     let mut computed_to_remove = HashSet::<SlashedAmount>::new();
-    //     for slashed_amount in computed_amounts.iter() {
-    //         if slashed_amount.epoch + params.unbonding_len < infraction_epoch
-    // {             updated_amount -= slashed_amount.amount;
-    //             computed_to_remove.insert(slashed_amount.clone());
-    //         }
-    //     }
-    //     for item in computed_to_remove {
-    //         computed_amounts.remove(&item);
-    //     }
-    //     let slash_rate = get_final_cubic_slash_rate(
-    //         storage,
-    //         params,
-    //         infraction_epoch,
-    //         slash_type,
-    //     )?;
-    //     computed_amounts.insert(SlashedAmount {
-    //         amount: decimal_mult_amount(slash_rate, updated_amount),
-    //         epoch: infraction_epoch,
-    //     });
-    // }
     let final_amount = updated_amount
         - computed_amounts
             .iter()
@@ -1678,7 +1654,7 @@ where
     Ok(())
 }
 
-/// Withdraw tokens from that have been unbonded from proof-of-stake
+/// Withdraw tokens from those that have been unbonded from proof-of-stake
 pub fn withdraw_tokens<S>(
     storage: &mut S,
     source: Option<&Address>,
@@ -1701,6 +1677,7 @@ where
     }
 
     let mut withdrawable_amount = token::Amount::default();
+    // (withdraw_epoch, start_epoch)
     let mut unbonds_to_remove: Vec<(Epoch, Epoch)> = Vec::new();
 
     for unbond in unbond_handle.iter(storage)? {
@@ -1888,6 +1865,7 @@ where
                 epoch: slash_epoch,
                 block_height: _,
                 r#type: slash_type,
+                rate: _,
             } = slash;
             if *slash_epoch < bond_epoch {
                 continue;
@@ -2727,11 +2705,13 @@ where
     // to EpochedSlashes at the processing epoch, jail the validator, and then
     // immediately remove it from the validator set
 
-    // Write the slash data to storage
+    // Write the slash data to storage and set the initial rate to the minimum
+    // according to the infraction type (will be updated later when processed)
     let slash = Slash {
         epoch: evidence_epoch,
         block_height: evidence_block_height.into(),
-        r#type: slash_type,
+        r#type: slash_type.clone(),
+        rate: Default::default(),
     };
     let processing_epoch = evidence_epoch + params.unbonding_len;
 
