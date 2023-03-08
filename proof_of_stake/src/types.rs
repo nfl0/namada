@@ -129,11 +129,14 @@ pub type Bonds = crate::epoched::EpochedDelta<
     23,
 >;
 
-/// Slashes indexed by validator address
+/// Slashes indexed by validator address and then block height (for easier
+/// retrieval and iteration when processing)
 pub type ValidatorSlashes = NestedMap<Address, Slashes>;
 
 /// Epoched slashes, where the outer epoch key is the epoch in which the slash
 /// is processed
+/// NOTE: the `enqueued_slashes_handle` this is used for shouldn't need these
+/// slashes earlier than `cubic_window_width` epochs behind the current
 pub type EpochedSlashes = crate::epoched::NestedEpoched<
     ValidatorSlashes,
     crate::epoched::OffsetUnbondingLen,
@@ -145,7 +148,7 @@ pub type Unbonds = NestedMap<Epoch, LazyMap<Epoch, token::Amount>>;
 
 /// Total unbonded for validators needed for slashing
 /// TODO: (CHECK IF CORRECT BOUNDS)
-pub type ValidatorUniqueUnbonds = NestedMap<Epoch, LazyVec<UnbondRecord>>;
+pub type ValidatorUnbondRecords = NestedMap<Epoch, LazyVec<UnbondRecord>>;
 
 #[derive(
     Debug, Clone, BorshSerialize, BorshDeserialize, Hash, PartialEq, Eq,

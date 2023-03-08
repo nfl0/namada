@@ -772,11 +772,11 @@ mod test_finalize_block {
         Slash, ValidatorState, WeightedValidator,
     };
     use namada::proof_of_stake::{
+        enqueued_slashes_handle,
         read_consensus_validator_set_addresses_with_stake,
         read_num_consensus_validators, rewards_accumulator_handle,
-        slashes_handle, validator_consensus_key_handle,
-        validator_rewards_products_handle, validator_slashes_handle,
-        validator_state_handle,
+        validator_consensus_key_handle, validator_rewards_products_handle,
+        validator_slashes_handle, validator_state_handle,
     };
     use namada::types::governance::ProposalVote;
     use namada::types::storage::Epoch;
@@ -1671,17 +1671,17 @@ mod test_finalize_block {
             shell.wl_storage.storage.block.epoch + params.unbonding_len;
 
         dbg!(
-            &slashes_handle()
+            &enqueued_slashes_handle()
                 .at(&Epoch::default())
                 .is_empty(&shell.wl_storage)
         );
         dbg!(
-            &slashes_handle()
+            &enqueued_slashes_handle()
                 .at(&processing_epoch)
                 .is_empty(&shell.wl_storage)
         );
 
-        let all_slashes: Vec<_> = slashes_handle()
+        let all_slashes: Vec<_> = enqueued_slashes_handle()
             .at(&processing_epoch)
             .iter(&shell.wl_storage)
             .unwrap()

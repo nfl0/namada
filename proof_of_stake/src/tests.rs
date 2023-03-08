@@ -34,15 +34,16 @@ use crate::types::{
 use crate::{
     become_validator, below_capacity_validator_set_handle, bond_handle,
     bond_tokens, bonds_and_unbonds, consensus_validator_set_handle,
-    copy_validator_sets_and_positions, find_validator_by_raw_hash,
-    init_genesis, insert_validator_into_validator_set,
+    copy_validator_sets_and_positions, enqueued_slashes_handle,
+    find_validator_by_raw_hash, init_genesis,
+    insert_validator_into_validator_set,
     read_below_capacity_validator_set_addresses_with_stake,
     read_consensus_validator_set_addresses_with_stake,
     read_num_consensus_validators, read_total_stake,
-    read_validator_delta_value, read_validator_stake, slashes_handle,
-    staking_token_address, total_deltas_handle, unbond_handle, unbond_tokens,
-    update_validator_deltas, update_validator_set, validator_state_handle,
-    withdraw_tokens, write_validator_address_raw_hash,
+    read_validator_delta_value, read_validator_stake, staking_token_address,
+    total_deltas_handle, unbond_handle, unbond_tokens, update_validator_deltas,
+    update_validator_set, validator_state_handle, withdraw_tokens,
+    write_validator_address_raw_hash,
 };
 
 proptest! {
@@ -738,17 +739,13 @@ fn scrap_slashes() {
         r#type: SlashType::DuplicateVote,
         rate: dec!(0.1),
     };
-    let handle = slashes_handle().at(&Epoch::default());
+    let handle = enqueued_slashes_handle().at(&Epoch::default());
     dbg!(handle.is_empty(&storage).unwrap());
 
     handle.at(&address).push(&mut storage, slash).unwrap();
     dbg!(handle.is_empty(&storage).unwrap());
 
-    let all_slashes: Vec<_> = slashes_handle()
-        .at(&Epoch::default())
-        .iter(&storage)
-        .unwrap()
-        .collect();
+    let all_slashes: Vec<_> = handle.iter(&storage).unwrap().collect();
     dbg!(&all_slashes); // Showing a bunch of Errs in storage
 }
 
@@ -837,8 +834,15 @@ fn test_validator_sets() {
     )
     .unwrap();
     // Update deltas as they are needed for validator set updates
-    update_validator_deltas(&mut s, &params, &val3, stake3.change(), epoch)
-        .unwrap();
+    update_validator_deltas(
+        &mut s,
+        &params,
+        &val3,
+        stake3.change(),
+        epoch,
+        params.pipeline_len,
+    )
+    .unwrap();
 
     let consensus_vals: Vec<_> = consensus_validator_set_handle()
         .at(&pipeline_epoch)
@@ -885,8 +889,15 @@ fn test_validator_sets() {
         params.pipeline_len,
     )
     .unwrap();
-    update_validator_deltas(&mut s, &params, &val4, stake4.change(), epoch)
-        .unwrap();
+    update_validator_deltas(
+        &mut s,
+        &params,
+        &val4,
+        stake4.change(),
+        epoch,
+        params.pipeline_len,
+    )
+    .unwrap();
 
     let consensus_vals: Vec<_> = consensus_validator_set_handle()
         .at(&pipeline_epoch)
@@ -949,8 +960,15 @@ fn test_validator_sets() {
         params.pipeline_len,
     )
     .unwrap();
-    update_validator_deltas(&mut s, &params, &val5, stake5.change(), epoch)
-        .unwrap();
+    update_validator_deltas(
+        &mut s,
+        &params,
+        &val5,
+        stake5.change(),
+        epoch,
+        params.pipeline_len,
+    )
+    .unwrap();
 
     let below_capacity_vals: Vec<_> = below_capacity_validator_set_handle()
         .at(&pipeline_epoch)
@@ -987,8 +1005,15 @@ fn test_validator_sets() {
     // checks
     update_validator_set(&mut s, &params, &val1, -unbond.change(), epoch)
         .unwrap();
-    update_validator_deltas(&mut s, &params, &val1, -unbond.change(), epoch)
-        .unwrap();
+    update_validator_deltas(
+        &mut s,
+        &params,
+        &val1,
+        -unbond.change(),
+        epoch,
+        params.pipeline_len,
+    )
+    .unwrap();
 
     let consensus_vals: Vec<_> = consensus_validator_set_handle()
         .at(&pipeline_epoch)
@@ -1061,8 +1086,15 @@ fn test_validator_sets() {
         params.pipeline_len,
     )
     .unwrap();
-    update_validator_deltas(&mut s, &params, &val6, stake6.change(), epoch)
-        .unwrap();
+    update_validator_deltas(
+        &mut s,
+        &params,
+        &val6,
+        stake6.change(),
+        epoch,
+        params.pipeline_len,
+    )
+    .unwrap();
 
     let consensus_vals: Vec<_> = consensus_validator_set_handle()
         .at(&pipeline_epoch)
@@ -1139,8 +1171,15 @@ fn test_validator_sets() {
     let stake5 = stake5 + bond;
     println!("val5 {val5} new stake {stake5}");
     update_validator_set(&mut s, &params, &val5, bond.change(), epoch).unwrap();
-    update_validator_deltas(&mut s, &params, &val5, bond.change(), epoch)
-        .unwrap();
+    update_validator_deltas(
+        &mut s,
+        &params,
+        &val5,
+        bond.change(),
+        epoch,
+        params.pipeline_len,
+    )
+    .unwrap();
 
     let consensus_vals: Vec<_> = consensus_validator_set_handle()
         .at(&pipeline_epoch)
