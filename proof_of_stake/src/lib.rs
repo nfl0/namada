@@ -52,10 +52,11 @@ use storage::{
     is_unbond_key, is_validator_slashes_key, last_block_proposer_key,
     mult_change_to_amount, num_consensus_validators_key, params_key,
     slashes_prefix, unbonds_for_source_prefix, unbonds_prefix,
-    validator_address_raw_hash_key, validator_max_commission_rate_change_key,
-    BondDetails, BondsAndUnbondsDetail, BondsAndUnbondsDetails,
-    ReverseOrdTokenAmount, RewardsAccumulator, SlashedAmount, UnbondDetails,
-    UnbondRecord, ValidatorUnbondRecords,
+    validator_address_raw_hash_key, validator_last_slash_key,
+    validator_max_commission_rate_change_key, BondDetails,
+    BondsAndUnbondsDetail, BondsAndUnbondsDetails, ReverseOrdTokenAmount,
+    RewardsAccumulator, SlashedAmount, UnbondDetails, UnbondRecord,
+    ValidatorUnbondRecords,
 };
 use thiserror::Error;
 use types::{
@@ -177,10 +178,19 @@ pub enum CommissionRateChangeError {
     CannotRead(Address),
 }
 
-// ------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------
+#[allow(missing_docs)]
+#[derive(Error, Debug)]
+pub enum ReactivateValidatorError {
+    #[error("The given address {0} is not a validator address")]
+    NotAValidator(Address),
+    #[error("The given address {0} is not currently jailed")]
+    NotJailed(Address),
+    #[error(
+        "The given address {0} is not eligible for reactivation until epoch \
+         {1}: current epoch is {2}"
+    )]
+    NotEligible(Address, Epoch, Epoch),
+}
 
 impl From<BecomeValidatorError> for storage_api::Error {
     fn from(err: BecomeValidatorError) -> Self {
@@ -214,6 +224,12 @@ impl From<CommissionRateChangeError> for storage_api::Error {
 
 impl From<InflationError> for storage_api::Error {
     fn from(err: InflationError) -> Self {
+        Self::new(err)
+    }
+}
+
+impl From<ReactivateValidatorError> for storage_api::Error {
+    fn from(err: ReactivateValidatorError) -> Self {
         Self::new(err)
     }
 }
@@ -548,6 +564,31 @@ where
 {
     let key = last_block_proposer_key();
     storage.write(&key, address)
+}
+
+/// Read the most recent slash epoch for the given epoch
+pub fn read_validator_last_slash_epoch<S>(
+    storage: &S,
+    validator: &Address,
+) -> storage_api::Result<Option<Epoch>>
+where
+    S: StorageRead,
+{
+    let key = validator_last_slash_key(validator);
+    storage.read(&key)
+}
+
+/// Write the most recent slash epoch for the given epoch
+pub fn write_validator_last_slash_epoch<S>(
+    storage: &mut S,
+    validator: &Address,
+    epoch: Epoch,
+) -> storage_api::Result<()>
+where
+    S: StorageRead + StorageWrite,
+{
+    let key = validator_last_slash_key(validator);
+    storage.write(&key, epoch)
 }
 
 /// Read PoS validator's delta value.
@@ -2706,14 +2747,13 @@ pub fn slash<S>(
 where
     S: StorageRead + StorageWrite,
 {
-    println!("SLASHING ON NEW EVIDENCE");
-    let evidence_block_height: u64 = evidence_block_height.into();
-    // Upon slash detection, write the slash to the validator storage, write it
-    // to EpochedSlashes at the processing epoch, jail the validator, and then
-    // immediately remove it from the validator set
+    // Upon slash detection, record the slash in storage for later processing,
+    // then jail the validator and immediately remove it from the validator
+    // set
 
-    // Write the slash data to storage and set the initial rate to the minimum
-    // according to the infraction type (will be updated later when processed)
+    println!("SLASHING ON NEW EVIDENCE");
+
+    let evidence_block_height: u64 = evidence_block_height.into();
     let slash = Slash {
         epoch: evidence_epoch,
         block_height: evidence_block_height,
@@ -2722,11 +2762,21 @@ where
     };
     let processing_epoch = evidence_epoch + params.unbonding_len;
 
+    // Add the slash to the list of enqueued slashes to be processed at a later
+    // epoch
     enqueued_slashes_handle()
         .get_data_handler()
         .at(&processing_epoch)
         .at(validator)
         .push(storage, slash)?;
+
+    // Update the most recent slash (infraction) epoch for the validator
+    let last_slash_epoch = read_validator_last_slash_epoch(storage, validator)?;
+    if last_slash_epoch.is_none()
+        || evidence_epoch.0 > last_slash_epoch.unwrap_or_default().0
+    {
+        write_validator_last_slash_epoch(storage, validator, evidence_epoch)?;
+    }
 
     // Jail the validator and remove it from the validator set immediately
     let prev_state = validator_state_handle(validator)
@@ -3039,4 +3089,64 @@ where
     //     )?;
     //     update_total_deltas(storage, &params, token_change, current_epoch)?;
     // }
+}
+
+/// Re-activate a validator that is currently jailed
+pub fn reactivate_validator<S>(
+    storage: &mut S,
+    validator: &Address,
+    current_epoch: Epoch,
+) -> storage_api::Result<()>
+where
+    S: StorageRead + StorageWrite,
+{
+    let params = read_pos_params(storage)?;
+
+    // Check that the validator is currently jailed
+    let state = validator_state_handle(validator).get(
+        storage,
+        current_epoch,
+        &params,
+    )?;
+    if let Some(state) = state {
+        if state != ValidatorState::Jailed {
+            return Err(
+                ReactivateValidatorError::NotJailed(validator.clone()).into()
+            );
+        }
+    } else {
+        return Err(
+            ReactivateValidatorError::NotAValidator(validator.clone()).into()
+        );
+    }
+
+    // Check that the reactivation tx can be submitted given the current epoch
+    // and the most recent infraction epoch
+    let last_slash_epoch = read_validator_last_slash_epoch(storage, validator)?
+        .unwrap_or_default();
+    let eligible_epoch = last_slash_epoch + params.unbonding_len; // TODO: check this is the correct epoch to submit this tx
+    if current_epoch < eligible_epoch {
+        return Err(ReactivateValidatorError::NotEligible(
+            validator.clone(),
+            eligible_epoch,
+            current_epoch,
+        )
+        .into());
+    }
+    // TODO: any other checks that are needed? (deltas, etc)?
+
+    // Re-insert the validator into the validator set and update its state
+    let pipeline_epoch = current_epoch + params.pipeline_len;
+    let stake =
+        read_validator_stake(storage, &params, validator, pipeline_epoch)?
+            .unwrap_or_default();
+    insert_validator_into_validator_set(
+        storage,
+        &params,
+        validator,
+        stake,
+        current_epoch,
+        params.pipeline_len,
+    )?;
+    Ok(())
 }

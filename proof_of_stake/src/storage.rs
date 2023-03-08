@@ -24,6 +24,7 @@ const VALIDATOR_LAST_KNOWN_PRODUCT_EPOCH_KEY: &str =
     "last_known_rewards_product_epoch";
 const SLASHES_PREFIX: &str = "slash";
 const ALL_SLASHES_KEY: &str = "all_slashes";
+const VALIDATOR_LAST_SLASH_EPOCH: &str = "last_slash_epoch";
 const BOND_STORAGE_KEY: &str = "bond";
 const UNBOND_STORAGE_KEY: &str = "unbond";
 const VALIDATOR_TOTAL_UNBONDED_STORAGE_KEY: &str = "total_unbonded";
@@ -345,6 +346,14 @@ pub fn is_validator_slashes_key(key: &Key) -> Option<Address> {
     } else {
         None
     }
+}
+
+/// Storage key for the last (most recent) epoch in which a slashable offense
+/// was detected for a given validator
+pub fn validator_last_slash_key(validator: &Address) -> Key {
+    validator_prefix(validator)
+        .push(&VALIDATOR_LAST_SLASH_EPOCH.to_owned())
+        .expect("Cannot obtain a storage key")
 }
 
 /// Storage key prefix for all bonds.
