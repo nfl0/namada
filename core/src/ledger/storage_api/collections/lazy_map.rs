@@ -605,11 +605,11 @@ mod test {
         storage_api::iter_prefix_bytes(&storage, &key)
             .unwrap()
             .for_each(|a| {
-                dbg!(a).unwrap();
+                dbg!(a);
             });
 
         nested_map.iter(&storage).unwrap().for_each(|a| {
-            dbg!(a).unwrap();
+            dbg!(a);
         });
     }
 }
