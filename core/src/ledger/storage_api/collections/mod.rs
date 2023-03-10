@@ -74,6 +74,9 @@ pub trait LazyCollection {
         key: &storage::Key,
     ) -> storage_api::Result<Option<Self::SubKey>>;
 
+    /// TODO
+    fn is_data_sub_key(&self, key: &storage::Key) -> storage_api::Result<bool>;
+
     /// Try to read and decode the data for each change storage key in prior and
     /// posterior state. If there is no value in neither prior or posterior
     /// state (which is a possible state when transaction e.g. writes and then

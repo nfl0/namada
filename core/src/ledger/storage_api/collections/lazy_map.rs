@@ -163,8 +163,43 @@ where
                         .into_storage_result()
                 }
             }
+            // TODO: other collections
+            [DbKeySeg::StringSeg(sub_a), DbKeySeg::AddressSeg(sub_b)]
+                if sub_a == DATA_SUBKEY =>
+            {
+                if let Ok(key_in_kv) = storage::KeySeg::parse(sub_b.raw()) {
+                    let nested = self.at(&key_in_kv).is_valid_sub_key(key)?;
+                    match nested {
+                        Some(nested_sub_key) => Ok(Some(NestedSubKey::Data {
+                            key: key_in_kv,
+                            nested_sub_key,
+                        })),
+                        None => Err(ValidationError::InvalidNestedSubKey(
+                            key.clone(),
+                        ))
+                        .into_storage_result(),
+                    }
+                } else {
+                    Err(ValidationError::InvalidSubKey(key.clone()))
+                        .into_storage_result()
+                }
+            }
             _ => Err(ValidationError::InvalidSubKey(key.clone()))
                 .into_storage_result(),
+        }
+    }
+
+    fn is_data_sub_key(&self, key: &storage::Key) -> storage_api::Result<bool> {
+        let sub_key = self.is_valid_sub_key(key)?;
+        match sub_key {
+            Some(NestedSubKey::Data {
+                key: parsed_key,
+                nested_sub_key: _,
+            }) => {
+                let sub = self.at(&parsed_key);
+                sub.is_data_sub_key(key)
+            }
+            None => Ok(false),
         }
     }
 
@@ -283,6 +318,10 @@ where
         }
     }
 
+    fn is_data_sub_key(&self, key: &storage::Key) -> storage_api::Result<bool> {
+        Ok(self.is_valid_sub_key(key)?.is_some())
+    }
+
     fn read_sub_key_data<ENV>(
         env: &ENV,
         storage_key: &storage::Key,
@@ -372,7 +411,11 @@ where
             )>,
         > + 'iter,
     > {
-        let iter = storage_api::iter_prefix(storage, &self.get_data_prefix())?;
+        let iter = storage_api::iter_prefix_with_filter(
+            storage,
+            &self.get_data_prefix(),
+            |key| self.is_data_sub_key(key).unwrap_or_default(),
+        )?;
         Ok(iter.map(|key_val_res| {
             let (key, val) = key_val_res?;
             dbg!(&key, &val);

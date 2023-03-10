@@ -322,6 +322,10 @@ where
 
         // Ok(actions)
     }
+
+    fn is_data_sub_key(&self, key: &storage::Key) -> storage_api::Result<bool> {
+        Ok(self.is_valid_sub_key(key)?.is_some())
+    }
 }
 
 // Generic `LazySet` methods that require no bounds on values `T`

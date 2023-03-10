@@ -164,6 +164,11 @@ where
         }
     }
 
+    fn is_data_sub_key(&self, key: &storage::Key) -> storage_api::Result<bool> {
+        let sub_key = self.is_valid_sub_key(key)?;
+        Ok(matches!(sub_key, Some(SubKey::Data(_))))
+    }
+
     fn read_sub_key_data<ENV>(
         env: &ENV,
         storage_key: &storage::Key,

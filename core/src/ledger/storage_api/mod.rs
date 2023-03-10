@@ -156,7 +156,7 @@ where
 {
     let iter = storage.iter_prefix(prefix)?;
     let iter = itertools::unfold(iter, |iter| {
-        match storage.iter_next(iter) {
+        match dbg!(storage.iter_next(iter)) {
             Ok(Some((key, val))) => {
                 let key = match storage::Key::parse(key).into_storage_result() {
                     Ok(key) => key,
@@ -178,6 +178,54 @@ where
             Err(err) => {
                 // Propagate `iter_next` errors into Iterator's Item
                 Some(Err(err))
+            }
+        }
+    });
+    Ok(iter)
+}
+
+pub fn iter_prefix_with_filter<'a, T, F>(
+    storage: &'a impl StorageRead,
+    prefix: &crate::types::storage::Key,
+    filter: F,
+) -> Result<impl Iterator<Item = Result<(storage::Key, T)>> + 'a>
+where
+    T: BorshDeserialize,
+    F: Fn(&storage::Key) -> bool + 'a,
+{
+    let iter = storage.iter_prefix(prefix)?;
+    let iter = itertools::unfold(iter, move |iter| {
+        loop {
+            match dbg!(storage.iter_next(iter)) {
+                Ok(Some((key, val))) => {
+                    let key =
+                        match storage::Key::parse(key).into_storage_result() {
+                            Ok(key) => key,
+                            Err(err) => {
+                                // Propagate key encoding errors into Iterator's
+                                // Item
+                                return Some(Err(err));
+                            }
+                        };
+                    if !filter(&key) {
+                        continue;
+                    }
+                    let val =
+                        match T::try_from_slice(&val).into_storage_result() {
+                            Ok(val) => val,
+                            Err(err) => {
+                                // Propagate val encoding errors into Iterator's
+                                // Item
+                                return Some(Err(err));
+                            }
+                        };
+                    return Some(Ok((key, val)));
+                }
+                Ok(None) => return None,
+                Err(err) => {
+                    // Propagate `iter_next` errors into Iterator's Item
+                    return Some(Err(err));
+                }
             }
         }
     });
