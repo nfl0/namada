@@ -50,13 +50,12 @@ use storage::{
     bonds_for_source_prefix, bonds_prefix, decimal_mult_amount,
     get_validator_address_from_bond, into_tm_voting_power, is_bond_key,
     is_unbond_key, is_validator_slashes_key, last_block_proposer_key,
-    mult_change_to_amount, num_consensus_validators_key, params_key,
-    slashes_prefix, unbonds_for_source_prefix, unbonds_prefix,
-    validator_address_raw_hash_key, validator_last_slash_key,
-    validator_max_commission_rate_change_key, BondDetails,
-    BondsAndUnbondsDetail, BondsAndUnbondsDetails, ReverseOrdTokenAmount,
-    RewardsAccumulator, SlashedAmount, UnbondDetails, UnbondRecord,
-    ValidatorUnbondRecords,
+    mult_change_to_amount, params_key, slashes_prefix,
+    unbonds_for_source_prefix, unbonds_prefix, validator_address_raw_hash_key,
+    validator_last_slash_key, validator_max_commission_rate_change_key,
+    BondDetails, BondsAndUnbondsDetail, BondsAndUnbondsDetails,
+    ReverseOrdTokenAmount, RewardsAccumulator, SlashedAmount, UnbondDetails,
+    UnbondRecord, ValidatorUnbondRecords,
 };
 use thiserror::Error;
 use types::{
@@ -428,8 +427,10 @@ where
         token::Change::from(total_bonded),
         current_epoch,
     )?;
+
     // Credit bonded token amount to the PoS account
     credit_tokens(storage, &staking_token_address(), &ADDRESS, total_bonded)?;
+
     // Copy the genesis validator set into the pipeline epoch as well
     for epoch in (current_epoch.next()).iter_range(params.pipeline_len) {
         copy_validator_sets_and_positions(
@@ -519,28 +520,6 @@ where
 {
     let key = validator_max_commission_rate_change_key(validator);
     storage.write(&key, change)
-}
-
-/// Read number of consensus PoS validators.
-pub fn read_num_consensus_validators<S>(storage: &S) -> storage_api::Result<u64>
-where
-    S: StorageRead,
-{
-    Ok(storage
-        .read(&num_consensus_validators_key())?
-        .unwrap_or_default())
-}
-
-/// Read number of consensus PoS validators.
-pub fn write_num_consensus_validators<S>(
-    storage: &mut S,
-    new_num: u64,
-) -> storage_api::Result<()>
-where
-    S: StorageRead + StorageWrite,
-{
-    let key = num_consensus_validators_key();
-    storage.write(&key, new_num)
 }
 
 /// Read last block proposer address.
@@ -719,6 +698,20 @@ where
             )
         })
         .collect()
+}
+
+/// Count the number of consensus validators
+pub fn get_num_consensus_validators<S>(
+    storage: &S,
+    epoch: namada_core::types::storage::Epoch,
+) -> storage_api::Result<u64>
+where
+    S: StorageRead,
+{
+    Ok(consensus_validator_set_handle()
+        .at(&epoch)
+        .iter(storage)?
+        .count() as u64)
 }
 
 /// Read all addresses from below-capacity validator set with their stake.
@@ -938,8 +931,9 @@ where
     let consensus_set = &consensus_validator_set_handle().at(&target_epoch);
     let below_cap_set =
         &below_capacity_validator_set_handle().at(&target_epoch);
-    // TODO make epoched
-    let num_consensus_validators = read_num_consensus_validators(storage)?;
+
+    let num_consensus_validators =
+        get_num_consensus_validators(storage, target_epoch)?;
     if num_consensus_validators < params.max_validator_slots {
         insert_validator_into_set(
             &consensus_set.at(&stake),
@@ -953,7 +947,6 @@ where
             current_epoch,
             offset,
         )?;
-        write_num_consensus_validators(storage, num_consensus_validators + 1)?;
     } else {
         // Check to see if the current genesis validator should replace one
         // already in the consensus set
@@ -2679,13 +2672,16 @@ where
 {
     println!("COMPUTING CUBIC SLASH RATE");
     let mut sum_vp_fraction = Decimal::ZERO;
-    let start_epoch = infraction_epoch - params.cubic_slashing_window_length;
-    let num_epochs = 2 * params.cubic_slashing_window_length + 1;
+    let start_epoch = infraction_epoch
+        .sub_or_default(Epoch(params.cubic_slashing_window_length));
+    let end_epoch = infraction_epoch + params.cubic_slashing_window_length;
 
-    for epoch in Epoch::iter_range(start_epoch, num_epochs) {
+    for epoch in Epoch::iter_bounds_inclusive(start_epoch, end_epoch) {
         let total_stake =
             Decimal::from(read_total_stake(storage, params, epoch)?);
-        let slashes = enqueued_slashes_handle().at(&epoch);
+
+        let processing_epoch = epoch + params.unbonding_len;
+        let slashes = enqueued_slashes_handle().at(&processing_epoch);
         let infracting_stake =
             slashes.iter(storage)?.fold(Decimal::ZERO, |sum, res| {
                 let (
@@ -2700,6 +2696,8 @@ where
                     read_validator_stake(storage, params, &validator, epoch)
                         .unwrap()
                         .unwrap_or_default();
+
+                dbg!(&validator_stake);
                 sum + Decimal::from(validator_stake)
                 // TODO: does something more complex need to be done
                 // here in the event some of these slashes correspond to
@@ -2707,6 +2705,7 @@ where
             });
         sum_vp_fraction += infracting_stake / total_stake;
     }
+    println!("Computed");
     // TODO: make sure `sum_vp_fraction` does not exceed 1/3 or handle with care
     // another way
     Ok(dec!(9) * sum_vp_fraction * sum_vp_fraction)
@@ -2734,7 +2733,8 @@ where
 }
 
 /// Record a slash for a misbehavior that has been received from Tendermint and
-/// then jail the validator. The slash rate will be computed at a later epoch.
+/// then jail the validator, removing it from the validator set. The slash rate
+/// will be computed at a later epoch.
 pub fn slash<S>(
     storage: &mut S,
     params: &PosParams,
@@ -2747,10 +2747,6 @@ pub fn slash<S>(
 where
     S: StorageRead + StorageWrite,
 {
-    // Upon slash detection, record the slash in storage for later processing,
-    // then jail the validator and immediately remove it from the validator
-    // set
-
     println!("SLASHING ON NEW EVIDENCE");
 
     let evidence_block_height: u64 = evidence_block_height.into();
@@ -2761,6 +2757,7 @@ where
         rate: Decimal::ZERO, // Let the rate be 0 initially before processing
     };
     let processing_epoch = evidence_epoch + params.unbonding_len;
+    let pipeline_epoch = current_epoch + params.pipeline_len;
 
     // Add the slash to the list of enqueued slashes to be processed at a later
     // epoch
@@ -2778,7 +2775,8 @@ where
         write_validator_last_slash_epoch(storage, validator, evidence_epoch)?;
     }
 
-    // Jail the validator and remove it from the validator set immediately
+    // Jail the validator and remove it from the validator set immediately. Need
+    // to do this for the current through the pipeline epoch
     let prev_state = validator_state_handle(validator)
         .get(storage, current_epoch, params)?
         .expect("Expected to find a valid validator.");
@@ -2787,55 +2785,56 @@ where
             todo!()
         }
         ValidatorState::Consensus => {
-            let amount_pre = validator_deltas_handle(validator)
-                .get_sum(storage, current_epoch, params)?
-                .unwrap_or_default();
-            let val_position = validator_set_positions_handle()
-                .at(&current_epoch)
-                .get(storage, validator)?
-                .expect("Could not find validator's position in storage.");
-            let _ = consensus_validator_set_handle()
-                .at(&current_epoch)
-                .at(&token::Amount::from_change(amount_pre))
-                .remove(storage, &val_position)?;
-
-            // TODO: turn this num_active_validators thing into an epoched
-            // perhaps so I can properly update it here
-            let num = read_num_consensus_validators(storage)?;
-            write_num_consensus_validators(storage, num - 1)?;
+            for epoch in
+                Epoch::iter_bounds_inclusive(current_epoch, pipeline_epoch)
+            {
+                let amount_pre = validator_deltas_handle(validator)
+                    .get_sum(storage, epoch, params)?
+                    .unwrap_or_default();
+                let val_position = validator_set_positions_handle()
+                    .at(&epoch)
+                    .get(storage, validator)?
+                    .expect("Could not find validator's position in storage.");
+                let _ = consensus_validator_set_handle()
+                    .at(&epoch)
+                    .at(&token::Amount::from_change(amount_pre))
+                    .remove(storage, &val_position)?;
+            }
 
             // Promote the next max inactive validator to the active validator
             // set at the pipeline offset TODO: confirm that this is
             // what we will want to do
-            let pipeline_epoch = current_epoch + params.pipeline_len;
-            let below_capacity_handle =
-                below_capacity_validator_set_handle().at(&pipeline_epoch);
 
-            if !below_capacity_handle.is_empty(storage)? {
-                let max_below_capacity_amount =
-                    get_max_below_capacity_validator_amount(
-                        &below_capacity_handle,
-                        storage,
-                    )?;
-                let position_to_promote = find_first_position(
-                    &below_capacity_handle
-                        .at(&max_below_capacity_amount.into()),
-                    storage,
-                )?
-                .expect("Should return a position.");
-                let removed_validator = below_capacity_handle
-                    .at(&max_below_capacity_amount.into())
-                    .remove(storage, &position_to_promote)?
-                    .expect("Should have returned a removed validator.");
-                insert_validator_into_set(
-                    &consensus_validator_set_handle()
-                        .at(&pipeline_epoch)
-                        .at(&max_below_capacity_amount),
-                    storage,
-                    &pipeline_epoch,
-                    &removed_validator,
-                )?;
-            }
+            // TODO: do we do the below?
+
+            // let below_capacity_handle =
+            //     below_capacity_validator_set_handle().at(&pipeline_epoch);
+
+            // if !below_capacity_handle.is_empty(storage)? {
+            //     let max_below_capacity_amount =
+            //         get_max_below_capacity_validator_amount(
+            //             &below_capacity_handle,
+            //             storage,
+            //         )?;
+            //     let position_to_promote = find_first_position(
+            //         &below_capacity_handle
+            //             .at(&max_below_capacity_amount.into()),
+            //         storage,
+            //     )?
+            //     .expect("Should return a position.");
+            //     let removed_validator = below_capacity_handle
+            //         .at(&max_below_capacity_amount.into())
+            //         .remove(storage, &position_to_promote)?
+            //         .expect("Should have returned a removed validator.");
+            //     insert_validator_into_set(
+            //         &consensus_validator_set_handle()
+            //             .at(&pipeline_epoch)
+            //             .at(&max_below_capacity_amount),
+            //         storage,
+            //         &pipeline_epoch,
+            //         &removed_validator,
+            //     )?;
+            // }
         }
         ValidatorState::BelowCapacity => {
             todo!();
@@ -2972,6 +2971,7 @@ where
                             prev_slashes.push(val_slash);
                         }
                     }
+
                     total_unbonded +=
                         token::Amount::from_change(get_slashed_amount(
                             storage,
@@ -2987,11 +2987,16 @@ where
             for offset in 1..=params.pipeline_len {
                 let unbonds = unbond_records_handle(&validator)
                     .at(&(current_epoch + offset));
+
                 for unbond in unbonds.iter(storage)? {
+                    dbg!(&unbond);
+
                     let unbond = unbond?;
+
                     if unbond.start > enqueued_slash.epoch {
                         continue;
                     }
+
                     let mut prev_slashes = Vec::<Slash>::new();
                     for val_slash in
                         validator_slashes_handle(&validator).iter(storage)?
@@ -3004,6 +3009,7 @@ where
                             prev_slashes.push(val_slash);
                         }
                     }
+
                     total_unbonded +=
                         token::Amount::from_change(get_slashed_amount(
                             storage,
@@ -3012,27 +3018,26 @@ where
                             prev_slashes.as_slice(),
                         )?);
                 }
+
                 let this_slash = decimal_mult_amount(
                     enqueued_slash.rate,
                     validator_stake_at_infraction - total_unbonded,
                 );
 
                 // TODO: should `diff_slashed_amount` be negative?
-                let diff_slashed_amount = (last_slash - this_slash).change();
+                let diff_slashed_amount = (this_slash - last_slash).change();
                 deltas_for_update.push((
                     validator.clone(),
                     current_epoch + offset,
                     diff_slashed_amount,
                 ));
 
-                total_slashed -= diff_slashed_amount;
+                total_slashed += diff_slashed_amount;
                 last_slash = this_slash;
                 total_unbonded = token::Amount::default();
             }
         }
     }
-    println!("dbg0");
-
     // Update the deltas in storage
     for (validator, epoch, delta) in deltas_for_update {
         // TODO: may need to amend this function to take the offset as a param
@@ -3040,8 +3045,6 @@ where
         update_validator_deltas(storage, &params, &validator, delta, epoch, 0)?;
         update_total_deltas(storage, &params, delta, epoch, 0)?;
     }
-
-    println!("dbg1");
 
     // Transfer all slashed tokens from PoS account to Slash Pool address
     transfer_tokens(

@@ -80,9 +80,6 @@ where
              {new_epoch}."
         );
 
-        println!("BYZANTINE VALIDATORS:");
-        dbg!(&self.byzantine_validators);
-
         if new_epoch {
             namada::ledger::storage::update_allowed_conversions(
                 &mut self.wl_storage,
@@ -483,12 +480,8 @@ where
             .update_epoch(height, header_time)
             .expect("Must be able to update epoch");
 
-        println!("\nRECORDING SLASHES FROM EVIDENCE");
         self.record_slashes_from_evidence();
-        println!("\nPROCESSING SLASHES ENQUEUED FOR THIS EPOCH");
-
         self.process_slashes();
-        println!("\nSLASHES PROCESSED");
 
         (height, new_epoch)
     }
@@ -765,18 +758,21 @@ mod test_finalize_block {
 
     use data_encoding::HEXUPPER;
     use namada::ledger::parameters::EpochDuration;
-    use namada::ledger::storage_api;
+    use namada::ledger::storage_api::{self};
     //    use data_encoding::HEXUPPER;
     use namada::proof_of_stake::btree_set::BTreeSetShims;
+    use namada::proof_of_stake::storage::{
+        is_validator_slashes_key, slashes_prefix,
+    };
     use namada::proof_of_stake::types::{
-        Slash, ValidatorState, WeightedValidator,
+        SlashType, ValidatorState, WeightedValidator,
     };
     use namada::proof_of_stake::{
-        enqueued_slashes_handle,
+        enqueued_slashes_handle, get_num_consensus_validators,
         read_consensus_validator_set_addresses_with_stake,
-        read_num_consensus_validators, rewards_accumulator_handle,
-        validator_consensus_key_handle, validator_rewards_products_handle,
-        validator_slashes_handle, validator_state_handle,
+        rewards_accumulator_handle, validator_consensus_key_handle,
+        validator_rewards_products_handle, validator_slashes_handle,
+        validator_state_handle, write_pos_params,
     };
     use namada::types::governance::ProposalVote;
     use namada::types::storage::Epoch;
@@ -1534,7 +1530,17 @@ mod test_finalize_block {
         votes: Vec<VoteInfo>,
         byzantine_validators: Option<Vec<Misbehavior>>,
     ) {
+        // Let the header time be always ahead of the next epoch min start time
+        let header = Header {
+            time: shell
+                .wl_storage
+                .storage
+                .next_epoch_min_start_time
+                .next_second(),
+            ..Default::default()
+        };
         let mut req = FinalizeBlock {
+            header,
             proposer_address,
             votes,
             ..Default::default()
@@ -1547,10 +1553,12 @@ mod test_finalize_block {
     }
 
     #[test]
-    fn test_ledger_slashing() {
+    fn test_ledger_slashing() -> storage_api::Result<()> {
         let num_validators = 7_u64;
         let (mut shell, _) = setup(num_validators);
-        let params = read_pos_params(&shell.wl_storage).unwrap();
+        let mut params = read_pos_params(&shell.wl_storage).unwrap();
+        params.unbonding_len = 4;
+        write_pos_params(&mut shell.wl_storage, params.clone())?;
 
         let validator_set: Vec<WeightedValidator> =
             read_consensus_validator_set_addresses_with_stake(
@@ -1579,22 +1587,27 @@ mod test_finalize_block {
             HEXUPPER.decode(hash_string.as_bytes()).unwrap()
         };
 
-        let mut pkhs: Vec<Vec<u8>> = Vec::new();
-        for validator in &validator_set {
+        let mut all_pkhs: Vec<Vec<u8>> = Vec::new();
+        let mut behaving_pkhs: Vec<Vec<u8>> = Vec::new();
+        for (idx, validator) in validator_set.iter().enumerate() {
             assert_eq!(
                 validator_state_handle(&validator.address)
                     .get(&shell.wl_storage, Epoch::default(), &params)
                     .unwrap(),
                 Some(ValidatorState::Consensus)
             );
-            pkhs.push(get_pkh(validator.address.clone(), Epoch::default()));
+            all_pkhs.push(get_pkh(validator.address.clone(), Epoch::default()));
+            if idx > 1_usize {
+                behaving_pkhs
+                    .push(get_pkh(validator.address.clone(), Epoch::default()));
+            }
         }
 
-        let pkh1 = pkhs[0].clone();
-        let _pkh2 = pkhs[1].clone();
+        let pkh1 = all_pkhs[0].clone();
+        let pkh2 = all_pkhs[1].clone();
 
         // Finalize block 1
-        next_block_for_inflation(&mut shell, pkh1, vec![], None);
+        next_block_for_inflation(&mut shell, pkh1.clone(), vec![], None);
         // for validator in &validator_set {
         //     assert_eq!(
         //         validator_state_handle(&validator.address)
@@ -1605,14 +1618,12 @@ mod test_finalize_block {
         //     pkhs.push(get_pkh(validator.address.clone(), Epoch::default()));
         // }
 
-        let pkh1 = pkhs[0].clone();
-        let pkh2 = pkhs[1].clone();
-
-        let votes = get_default_votes(&pkhs, &validator_set);
+        let votes = get_default_true_votes(&all_pkhs, &validator_set);
         assert!(!votes.is_empty());
 
-        // For block 2, include the evidences found for block 1. Only the type,
-        // height, and validator address are used in Namada
+        // For block 2, include the evidences found for block 1.
+        // NOTE: Only the type, height, and validator address fields from the
+        // Misbehavior struct are used in Namada
         let byzantine_validators = vec![
             Misbehavior {
                 r#type: 1,
@@ -1625,7 +1636,7 @@ mod test_finalize_block {
                 total_voting_power: Default::default(),
             },
             Misbehavior {
-                r#type: 1,
+                r#type: 2,
                 validator: Some(Validator {
                     address: pkh2,
                     power: Default::default(),
@@ -1637,74 +1648,157 @@ mod test_finalize_block {
         ];
         next_block_for_inflation(
             &mut shell,
-            pkh1,
+            pkh1.clone(),
             votes,
             Some(byzantine_validators),
-        );
-
-        assert_eq!(
-            validator_state_handle(&val1.address)
-                .get(
-                    &shell.wl_storage,
-                    shell.wl_storage.storage.last_epoch,
-                    &params
-                )
-                .unwrap(),
-            Some(ValidatorState::Jailed)
-        );
-        assert_eq!(
-            validator_state_handle(&val2.address)
-                .get(
-                    &shell.wl_storage,
-                    shell.wl_storage.storage.last_epoch,
-                    &params
-                )
-                .unwrap(),
-            Some(ValidatorState::Jailed)
-        );
-        assert_eq!(
-            5_u64,
-            read_num_consensus_validators(&shell.wl_storage).unwrap()
         );
 
         let processing_epoch =
             shell.wl_storage.storage.block.epoch + params.unbonding_len;
 
-        dbg!(
-            &enqueued_slashes_handle()
-                .at(&Epoch::default())
-                .is_empty(&shell.wl_storage)
-        );
-        dbg!(
-            &enqueued_slashes_handle()
+        // Check that the ValidatorState, enqueued slashes, and validator sets
+        // are properly updated
+        for epoch in Epoch::default().iter_range(params.pipeline_len + 1) {
+            dbg!(&epoch);
+            assert_eq!(
+                validator_state_handle(&val1.address)
+                    .get(&shell.wl_storage, epoch, &params)
+                    .unwrap(),
+                Some(ValidatorState::Jailed)
+            );
+            assert_eq!(
+                validator_state_handle(&val2.address)
+                    .get(&shell.wl_storage, epoch, &params)
+                    .unwrap(),
+                Some(ValidatorState::Jailed)
+            );
+            assert!(
+                enqueued_slashes_handle()
+                    .at(&epoch)
+                    .is_empty(&shell.wl_storage)?
+            );
+            assert_eq!(
+                get_num_consensus_validators(&shell.wl_storage, epoch).unwrap(),
+                5_u64
+            );
+        }
+        assert!(
+            !enqueued_slashes_handle()
                 .at(&processing_epoch)
-                .is_empty(&shell.wl_storage)
+                .is_empty(&shell.wl_storage)?
         );
 
-        let all_slashes: Vec<_> = enqueued_slashes_handle()
-            .at(&processing_epoch)
-            .iter(&shell.wl_storage)
+        // Get the new validator set into memory
+        let validator_set: Vec<WeightedValidator> =
+            read_consensus_validator_set_addresses_with_stake(
+                &shell.wl_storage,
+                Epoch::default(),
+            )
             .unwrap()
+            .into_iter()
             .collect();
 
-        dbg!(&all_slashes);
-        let val1_slashes: Vec<Slash> = validator_slashes_handle(&val1.address)
-            .iter(&shell.wl_storage)
-            .unwrap()
-            .map(|a| a.unwrap())
-            .collect();
-        let val2_slashes: Vec<Slash> = validator_slashes_handle(&val2.address)
-            .iter(&shell.wl_storage)
-            .unwrap()
-            .map(|a| a.unwrap())
-            .collect();
+        // Advance to the processing epoch
+        let votes = get_default_true_votes(&behaving_pkhs, &validator_set);
+        loop {
+            next_block_for_inflation(
+                &mut shell,
+                pkh1.clone(),
+                votes.clone(),
+                None,
+            );
+            if shell.wl_storage.storage.block.epoch == processing_epoch {
+                break;
+            } else {
+                // println!(
+                //     "Block {} epoch {}",
+                //     shell.wl_storage.storage.block.height,
+                //     shell.wl_storage.storage.block.epoch
+                // );
+                assert!(
+                    enqueued_slashes_handle()
+                        .at(&shell.wl_storage.storage.block.epoch)
+                        .is_empty(&shell.wl_storage)?
+                );
+            }
+        }
+        println!("LOOP ENDED");
 
-        dbg!(&val1_slashes, &val2_slashes);
-        assert!(val1_slashes.len() == 1 && val1_slashes[0].block_height == 1);
-        assert!(val2_slashes.len() == 1 && val2_slashes[0].block_height == 1);
+        let num_slashes = storage_api::iter_prefix_bytes(
+            &shell.wl_storage,
+            &slashes_prefix(),
+        )?
+        .filter(|kv_res| {
+            let (k, _v) = kv_res.as_ref().unwrap();
+            is_validator_slashes_key(k).is_some()
+        })
+        .fold(0, |sum, _a| sum + 1);
+
+        assert_eq!(num_slashes, 2);
+        assert_eq!(
+            validator_slashes_handle(&val1.address)
+                .len(&shell.wl_storage)
+                .unwrap(),
+            1_u64
+        );
+        assert_eq!(
+            validator_slashes_handle(&val2.address)
+                .len(&shell.wl_storage)
+                .unwrap(),
+            1_u64
+        );
+
+        let slash1 = validator_slashes_handle(&val1.address)
+            .get(&shell.wl_storage, 0)?
+            .unwrap();
+        let slash2 = validator_slashes_handle(&val2.address)
+            .get(&shell.wl_storage, 0)?
+            .unwrap();
+
+        assert_eq!(slash1.r#type, SlashType::DuplicateVote);
+        assert_eq!(slash2.r#type, SlashType::LightClientAttack);
+        assert_eq!(slash1.epoch, Epoch::default());
+        assert_eq!(slash2.epoch, Epoch::default());
+
+        // Each validator has equal weight in this test, and two have been
+        // slashed
+        let frac = dec!(2) / dec!(7);
+        let cubic_rate = dec!(9) * frac * frac;
+
+        assert_eq!(slash1.rate, cubic_rate);
+        assert_eq!(slash2.rate, cubic_rate);
+
+        // Check that there are still 5 consensus validators and the 2
+        // misbehaving ones are still jailed
+        for epoch in shell
+            .wl_storage
+            .storage
+            .block
+            .epoch
+            .iter_range(params.pipeline_len + 1)
+        {
+            assert_eq!(
+                validator_state_handle(&val1.address)
+                    .get(&shell.wl_storage, epoch, &params)
+                    .unwrap(),
+                Some(ValidatorState::Jailed)
+            );
+            assert_eq!(
+                validator_state_handle(&val2.address)
+                    .get(&shell.wl_storage, epoch, &params)
+                    .unwrap(),
+                Some(ValidatorState::Jailed)
+            );
+            assert_eq!(
+                get_num_consensus_validators(&shell.wl_storage, epoch).unwrap(),
+                5_u64
+            );
+        }
+
+        Ok(())
     }
 
-    fn get_default_votes(
+    fn get_default_true_votes(
         addresses: &Vec<Vec<u8>>,
         powers: &Vec<WeightedValidator>,
     ) -> Vec<VoteInfo> {

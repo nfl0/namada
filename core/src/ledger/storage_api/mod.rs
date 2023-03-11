@@ -156,7 +156,7 @@ where
 {
     let iter = storage.iter_prefix(prefix)?;
     let iter = itertools::unfold(iter, |iter| {
-        match dbg!(storage.iter_next(iter)) {
+        match storage.iter_next(iter) {
             Ok(Some((key, val))) => {
                 let key = match storage::Key::parse(key).into_storage_result() {
                     Ok(key) => key,
@@ -184,6 +184,8 @@ where
     Ok(iter)
 }
 
+/// Iterate Borsh encoded items matching the given prefix, additionally
+/// satisfying some boolean filter function
 pub fn iter_prefix_with_filter<'a, T, F>(
     storage: &'a impl StorageRead,
     prefix: &crate::types::storage::Key,
@@ -196,7 +198,7 @@ where
     let iter = storage.iter_prefix(prefix)?;
     let iter = itertools::unfold(iter, move |iter| {
         loop {
-            match dbg!(storage.iter_next(iter)) {
+            match storage.iter_next(iter) {
                 Ok(Some((key, val))) => {
                     let key =
                         match storage::Key::parse(key).into_storage_result() {

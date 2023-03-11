@@ -427,7 +427,7 @@ where
             let pos_params = read_pos_params(&self.wl_storage).unwrap();
             let current_epoch = self.wl_storage.storage.block.epoch;
             for evidence in byzantine_validators {
-                dbg!(&evidence);
+                // dbg!(&evidence);
                 tracing::info!("Processing evidence {evidence:?}.");
                 let evidence_height = match u64::try_from(evidence.height) {
                     Ok(height) => height,

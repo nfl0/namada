@@ -35,11 +35,10 @@ use crate::{
     become_validator, below_capacity_validator_set_handle, bond_handle,
     bond_tokens, bonds_and_unbonds, consensus_validator_set_handle,
     copy_validator_sets_and_positions, enqueued_slashes_handle,
-    find_validator_by_raw_hash, init_genesis,
+    find_validator_by_raw_hash, get_num_consensus_validators, init_genesis,
     insert_validator_into_validator_set,
     read_below_capacity_validator_set_addresses_with_stake,
-    read_consensus_validator_set_addresses_with_stake,
-    read_num_consensus_validators, read_total_stake,
+    read_consensus_validator_set_addresses_with_stake, read_total_stake,
     read_validator_delta_value, read_validator_stake, staking_token_address,
     total_deltas_handle, unbond_handle, unbond_tokens, update_validator_deltas,
     update_validator_set, validator_state_handle, withdraw_tokens,
@@ -628,7 +627,9 @@ fn test_become_validator_aux(
     // Advance to epoch 1
     current_epoch = advance_epoch(&mut s, &params);
 
-    let num_consensus_before = read_num_consensus_validators(&s).unwrap();
+    let num_consensus_before =
+        get_num_consensus_validators(&s, current_epoch + params.pipeline_len)
+            .unwrap();
     assert_eq!(
         min(validators.len() as u64, params.max_validator_slots),
         num_consensus_before
@@ -647,7 +648,9 @@ fn test_become_validator_aux(
     )
     .unwrap();
 
-    let num_consensus_after = read_num_consensus_validators(&s).unwrap();
+    let num_consensus_after =
+        get_num_consensus_validators(&s, current_epoch + params.pipeline_len)
+            .unwrap();
     assert_eq!(
         if validators.len() as u64 >= params.max_validator_slots {
             num_consensus_before

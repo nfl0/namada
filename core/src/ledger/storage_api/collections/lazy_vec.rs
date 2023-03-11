@@ -405,7 +405,7 @@ where
     {
         let len = self.len(storage)?;
         let data_key = self.get_data_key(len);
-        dbg!(&data_key, &val);
+        // dbg!(&data_key, &val);
         storage.write(&data_key, val)?;
         storage.write(&self.get_len_key(), len + 1)
     }
