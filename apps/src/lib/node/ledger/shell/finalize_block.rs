@@ -765,10 +765,11 @@ mod test_finalize_block {
         is_validator_slashes_key, slashes_prefix,
     };
     use namada::proof_of_stake::types::{
-        SlashType, ValidatorState, WeightedValidator,
+        decimal_mult_amount, SlashType, ValidatorState, WeightedValidator,
     };
     use namada::proof_of_stake::{
         enqueued_slashes_handle, get_num_consensus_validators,
+        reactivate_validator,
         read_consensus_validator_set_addresses_with_stake,
         rewards_accumulator_handle, validator_consensus_key_handle,
         validator_rewards_products_handle, validator_slashes_handle,
@@ -1578,6 +1579,9 @@ mod test_finalize_block {
         let _val6 = validator_set[5].clone();
         let _val7 = validator_set[6].clone();
 
+        let initial_stake = val1.bonded_stake;
+        let total_initial_stake = 7 * initial_stake;
+
         let get_pkh = |address, epoch| {
             let ck = validator_consensus_key_handle(&address)
                 .get(&shell.wl_storage, epoch, &params)
@@ -1608,15 +1612,6 @@ mod test_finalize_block {
 
         // Finalize block 1
         next_block_for_inflation(&mut shell, pkh1.clone(), vec![], None);
-        // for validator in &validator_set {
-        //     assert_eq!(
-        //         validator_state_handle(&validator.address)
-        //             .get(&shell.wl_storage, Epoch::default(), &params)
-        //             .unwrap(),
-        //         Some(ValidatorState::Consensus)
-        //     );
-        //     pkhs.push(get_pkh(validator.address.clone(), Epoch::default()));
-        // }
 
         let votes = get_default_true_votes(&all_pkhs, &validator_set);
         assert!(!votes.is_empty());
@@ -1659,7 +1654,6 @@ mod test_finalize_block {
         // Check that the ValidatorState, enqueued slashes, and validator sets
         // are properly updated
         for epoch in Epoch::default().iter_range(params.pipeline_len + 1) {
-            dbg!(&epoch);
             assert_eq!(
                 validator_state_handle(&val1.address)
                     .get(&shell.wl_storage, epoch, &params)
@@ -1720,6 +1714,28 @@ mod test_finalize_block {
                         .at(&shell.wl_storage.storage.block.epoch)
                         .is_empty(&shell.wl_storage)?
                 );
+                let stake1 = read_validator_stake(
+                    &shell.wl_storage,
+                    &params,
+                    &val1.address,
+                    shell.wl_storage.storage.block.epoch,
+                )?
+                .unwrap();
+                let stake2 = read_validator_stake(
+                    &shell.wl_storage,
+                    &params,
+                    &val2.address,
+                    shell.wl_storage.storage.block.epoch,
+                )?
+                .unwrap();
+                let total_stake = read_total_stake(
+                    &shell.wl_storage,
+                    &params,
+                    shell.wl_storage.storage.block.epoch,
+                )?;
+                assert_eq!(stake1, initial_stake);
+                assert_eq!(stake2, initial_stake);
+                assert_eq!(total_stake, total_initial_stake);
             }
         }
         println!("LOOP ENDED");
@@ -1794,6 +1810,84 @@ mod test_finalize_block {
                 5_u64
             );
         }
+
+        // Check that the deltas at the pipeline epoch are slashed
+        let pipeline_epoch =
+            shell.wl_storage.storage.block.epoch + params.pipeline_len;
+        let stake1 = read_validator_stake(
+            &shell.wl_storage,
+            &params,
+            &val1.address,
+            pipeline_epoch,
+        )?
+        .unwrap();
+        let stake2 = read_validator_stake(
+            &shell.wl_storage,
+            &params,
+            &val2.address,
+            pipeline_epoch,
+        )?
+        .unwrap();
+        let total_stake =
+            read_total_stake(&shell.wl_storage, &params, pipeline_epoch)?;
+
+        let expected_slashed = decimal_mult_amount(cubic_rate, initial_stake);
+        assert_eq!(stake1, initial_stake - expected_slashed);
+        assert_eq!(stake2, initial_stake - expected_slashed);
+        assert_eq!(total_stake, total_initial_stake - 2 * expected_slashed);
+
+        // Reactivate one of the validators
+        let current_epoch = shell.wl_storage.storage.block.epoch;
+        reactivate_validator(
+            &mut shell.wl_storage,
+            &val1.address,
+            current_epoch,
+        )?;
+        let pipeline_epoch = current_epoch + params.pipeline_len;
+
+        // Check that the state is the same until the pipeline epoch, at which
+        // point one validator is reactivated
+        for epoch in shell
+            .wl_storage
+            .storage
+            .block
+            .epoch
+            .iter_range(params.pipeline_len)
+        {
+            assert_eq!(
+                validator_state_handle(&val1.address)
+                    .get(&shell.wl_storage, epoch, &params)
+                    .unwrap(),
+                Some(ValidatorState::Jailed)
+            );
+            assert_eq!(
+                validator_state_handle(&val2.address)
+                    .get(&shell.wl_storage, epoch, &params)
+                    .unwrap(),
+                Some(ValidatorState::Jailed)
+            );
+            assert_eq!(
+                get_num_consensus_validators(&shell.wl_storage, epoch).unwrap(),
+                5_u64
+            );
+        }
+        assert_eq!(
+            validator_state_handle(&val1.address)
+                .get(&shell.wl_storage, pipeline_epoch, &params)
+                .unwrap(),
+            Some(ValidatorState::Consensus)
+        );
+        assert_eq!(
+            validator_state_handle(&val2.address)
+                .get(&shell.wl_storage, pipeline_epoch, &params)
+                .unwrap(),
+            Some(ValidatorState::Jailed)
+        );
+        assert_eq!(
+            get_num_consensus_validators(&shell.wl_storage, pipeline_epoch)
+                .unwrap(),
+            6_u64
+        );
 
         Ok(())
     }

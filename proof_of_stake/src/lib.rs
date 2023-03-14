@@ -182,8 +182,8 @@ pub enum CommissionRateChangeError {
 pub enum ReactivateValidatorError {
     #[error("The given address {0} is not a validator address")]
     NotAValidator(Address),
-    #[error("The given address {0} is not currently jailed")]
-    NotJailed(Address),
+    #[error("The given address {0} is not jailed in epoch {1}")]
+    NotJailed(Address, Epoch),
     #[error(
         "The given address {0} is not eligible for reactivation until epoch \
          {1}: current epoch is {2}"
@@ -941,12 +941,24 @@ where
             &target_epoch,
             address,
         )?;
-        validator_state_handle(address).init(
-            storage,
-            ValidatorState::Consensus,
-            current_epoch,
-            offset,
-        )?;
+        match validator_state_handle(address).get_last_update(storage)? {
+            Some(_) => {
+                validator_state_handle(address).set(
+                    storage,
+                    ValidatorState::Consensus,
+                    current_epoch,
+                    offset,
+                )?;
+            }
+            None => {
+                validator_state_handle(address).init(
+                    storage,
+                    ValidatorState::Consensus,
+                    current_epoch,
+                    offset,
+                )?;
+            }
+        }
     } else {
         // Check to see if the current genesis validator should replace one
         // already in the consensus set
@@ -986,12 +998,24 @@ where
                 &target_epoch,
                 address,
             )?;
-            validator_state_handle(address).init(
-                storage,
-                ValidatorState::Consensus,
-                current_epoch,
-                offset,
-            )?;
+            match validator_state_handle(address).get_last_update(storage)? {
+                Some(_) => {
+                    validator_state_handle(address).set(
+                        storage,
+                        ValidatorState::Consensus,
+                        current_epoch,
+                        offset,
+                    )?;
+                }
+                None => {
+                    validator_state_handle(address).init(
+                        storage,
+                        ValidatorState::Consensus,
+                        current_epoch,
+                        offset,
+                    )?;
+                }
+            }
             // Update and set the validator states
         } else {
             // Insert the current genesis validator into the below-capacity set
@@ -1001,12 +1025,24 @@ where
                 &target_epoch,
                 address,
             )?;
-            validator_state_handle(address).init(
-                storage,
-                ValidatorState::BelowCapacity,
-                current_epoch,
-                offset,
-            )?;
+            match validator_state_handle(address).get_last_update(storage)? {
+                Some(_) => {
+                    validator_state_handle(address).set(
+                        storage,
+                        ValidatorState::BelowCapacity,
+                        current_epoch,
+                        offset,
+                    )?;
+                }
+                None => {
+                    validator_state_handle(address).init(
+                        storage,
+                        ValidatorState::BelowCapacity,
+                        current_epoch,
+                        offset,
+                    )?;
+                }
+            }
         }
     }
     Ok(())
@@ -2697,7 +2733,6 @@ where
                         .unwrap()
                         .unwrap_or_default();
 
-                dbg!(&validator_stake);
                 sum + Decimal::from(validator_stake)
                 // TODO: does something more complex need to be done
                 // here in the event some of these slashes correspond to
@@ -2705,7 +2740,7 @@ where
             });
         sum_vp_fraction += infracting_stake / total_stake;
     }
-    println!("Computed");
+
     // TODO: make sure `sum_vp_fraction` does not exceed 1/3 or handle with care
     // another way
     Ok(dec!(9) * sum_vp_fraction * sum_vp_fraction)
@@ -2801,40 +2836,36 @@ where
                     .remove(storage, &val_position)?;
             }
 
-            // Promote the next max inactive validator to the active validator
-            // set at the pipeline offset TODO: confirm that this is
-            // what we will want to do
-
-            // TODO: do we do the below?
-
-            // let below_capacity_handle =
-            //     below_capacity_validator_set_handle().at(&pipeline_epoch);
-
-            // if !below_capacity_handle.is_empty(storage)? {
-            //     let max_below_capacity_amount =
-            //         get_max_below_capacity_validator_amount(
-            //             &below_capacity_handle,
-            //             storage,
-            //         )?;
-            //     let position_to_promote = find_first_position(
-            //         &below_capacity_handle
-            //             .at(&max_below_capacity_amount.into()),
-            //         storage,
-            //     )?
-            //     .expect("Should return a position.");
-            //     let removed_validator = below_capacity_handle
-            //         .at(&max_below_capacity_amount.into())
-            //         .remove(storage, &position_to_promote)?
-            //         .expect("Should have returned a removed validator.");
-            //     insert_validator_into_set(
-            //         &consensus_validator_set_handle()
-            //             .at(&pipeline_epoch)
-            //             .at(&max_below_capacity_amount),
-            //         storage,
-            //         &pipeline_epoch,
-            //         &removed_validator,
-            //     )?;
-            // }
+            // For the pipeline epoch only:
+            // promote the next max inactive validator to the active validator
+            // set at the pipeline offset
+            let below_capacity_handle =
+                below_capacity_validator_set_handle().at(&pipeline_epoch);
+            if !below_capacity_handle.is_empty(storage)? {
+                let max_below_capacity_amount =
+                    get_max_below_capacity_validator_amount(
+                        &below_capacity_handle,
+                        storage,
+                    )?;
+                let position_to_promote = find_first_position(
+                    &below_capacity_handle
+                        .at(&max_below_capacity_amount.into()),
+                    storage,
+                )?
+                .expect("Should return a position.");
+                let removed_validator = below_capacity_handle
+                    .at(&max_below_capacity_amount.into())
+                    .remove(storage, &position_to_promote)?
+                    .expect("Should have returned a removed validator.");
+                insert_validator_into_set(
+                    &consensus_validator_set_handle()
+                        .at(&pipeline_epoch)
+                        .at(&max_below_capacity_amount),
+                    storage,
+                    &pipeline_epoch,
+                    &removed_validator,
+                )?;
+            }
         }
         ValidatorState::BelowCapacity => {
             todo!();
@@ -2861,7 +2892,9 @@ where
     Ok(())
 }
 
-/// Process slashes that have been queued up after discovery
+/// Process slashes that have been queued up after discovery. Calculate the
+/// cubic slashing rate, store the finalized slashes, update the deltas, then
+/// transfer slashed tokens from PoS to the Slash Pool.
 pub fn process_slashes<S>(
     storage: &mut S,
     current_epoch: Epoch,
@@ -2869,7 +2902,6 @@ pub fn process_slashes<S>(
 where
     S: StorageRead + StorageWrite,
 {
-    println!("\nPROCESS SLASHES FOR EPOCH {current_epoch}");
     let params = read_pos_params(storage)?;
 
     // TODO: check if correct bounds
@@ -3042,8 +3074,10 @@ where
     for (validator, epoch, delta) in deltas_for_update {
         // TODO: may need to amend this function to take the offset as a param
         // too (since it automatically uses pipeline within)
-        update_validator_deltas(storage, &params, &validator, delta, epoch, 0)?;
-        update_total_deltas(storage, &params, delta, epoch, 0)?;
+        update_validator_deltas(
+            storage, &params, &validator, -delta, epoch, 0,
+        )?;
+        update_total_deltas(storage, &params, -delta, epoch, 0)?;
     }
 
     // Transfer all slashed tokens from PoS account to Slash Pool address
@@ -3056,42 +3090,6 @@ where
     )?;
 
     Ok(())
-
-    // if validator_slash_rates.is_empty() {
-    //     return Ok(());
-    // }
-
-    // let mut total_slashed = 0_u64;
-    // for (validator, slash_rate) in &validator_slash_rates {
-    //     let validator_stake_at_infraction = read_validator_stake(
-    //         storage,
-    //         &params,
-    //         validator,
-    //         infraction_epoch,
-    //     )?
-    //     .unwrap_or_default();
-    //     let slashed_amount = decimal_mult_u64(
-    //         *slash_rate,
-    //         u64::from(validator_stake_at_infraction),
-    //     );
-    //     total_slashed += slashed_amount;
-    //     let token_change = -token::Change::from(slashed_amount);
-
-    //     // Update validator at pipeline offset from the current. Validator
-    // set     // need not be updated since validator in question is jailed.
-
-    //     // TODO: check if this is correct in new specs, think there are some
-    //     // other things to consider to ensure deltas dont go negative
-
-    //     update_validator_deltas(
-    //         storage,
-    //         &params,
-    //         validator,
-    //         token_change,
-    //         current_epoch,
-    //     )?;
-    //     update_total_deltas(storage, &params, token_change, current_epoch)?;
-    // }
 }
 
 /// Re-activate a validator that is currently jailed
@@ -3105,22 +3103,27 @@ where
 {
     let params = read_pos_params(storage)?;
 
-    // Check that the validator is currently jailed
-    let state = validator_state_handle(validator).get(
-        storage,
-        current_epoch,
-        &params,
-    )?;
-    if let Some(state) = state {
-        if state != ValidatorState::Jailed {
-            return Err(
-                ReactivateValidatorError::NotJailed(validator.clone()).into()
-            );
+    // Check that the validator is jailed up to the pipeline epoch
+    for epoch in current_epoch.iter_range(params.pipeline_len + 1) {
+        let state = validator_state_handle(validator).get(
+            storage,
+            current_epoch,
+            &params,
+        )?;
+        if let Some(state) = state {
+            if state != ValidatorState::Jailed {
+                return Err(ReactivateValidatorError::NotJailed(
+                    validator.clone(),
+                    epoch,
+                )
+                .into());
+            }
+        } else {
+            return Err(ReactivateValidatorError::NotAValidator(
+                validator.clone(),
+            )
+            .into());
         }
-    } else {
-        return Err(
-            ReactivateValidatorError::NotAValidator(validator.clone()).into()
-        );
     }
 
     // Check that the reactivation tx can be submitted given the current epoch
@@ -3143,6 +3146,7 @@ where
     let stake =
         read_validator_stake(storage, &params, validator, pipeline_epoch)?
             .unwrap_or_default();
+
     insert_validator_into_validator_set(
         storage,
         &params,

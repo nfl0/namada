@@ -226,7 +226,8 @@ where
             .unwrap()
     }
 
-    fn get_last_update<S>(
+    /// Get the last (most recent) epoch in which the data was updated
+    pub fn get_last_update<S>(
         &self,
         storage: &S,
     ) -> storage_api::Result<Option<Epoch>>
