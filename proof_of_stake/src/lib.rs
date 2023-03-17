@@ -1063,7 +1063,7 @@ where
 
 /// NEW: Update validator set when a validator receives a new bond and when
 /// its bond is unbonded (self-bond or delegation).
-fn update_validator_set<S>(
+pub fn update_validator_set<S>(
     storage: &mut S,
     params: &PosParams,
     validator: &Address,

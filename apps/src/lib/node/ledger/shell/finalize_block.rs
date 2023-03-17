@@ -16,8 +16,9 @@ use namada::proof_of_stake::{
     delegator_rewards_products_handle, find_validator_by_raw_hash,
     read_last_block_proposer_address, read_pos_params, read_total_stake,
     read_validator_stake, rewards_accumulator_handle, update_total_deltas,
-    update_validator_deltas, validator_commission_rate_handle,
-    validator_rewards_products_handle, write_last_block_proposer_address,
+    update_validator_deltas, update_validator_set,
+    validator_commission_rate_handle, validator_rewards_products_handle,
+    write_last_block_proposer_address,
 };
 use namada::types::address::Address;
 #[cfg(feature = "abcipp")]
@@ -732,6 +733,13 @@ where
                 current_epoch,
                 params.pipeline_len,
             )?;
+            update_validator_set(
+                &mut self.wl_storage,
+                &params,
+                &validator,
+                token::Change::from(reward),
+                current_epoch,
+            )
         }
         update_total_deltas(
             &mut self.wl_storage,
