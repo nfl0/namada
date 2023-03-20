@@ -412,7 +412,8 @@ where
                     // Wrapper gas limit, Max block gas and cumulated block gas
                     let mut tx_gas_meter = TxGasMeter::new(u64::from(&wrapper.gas_limit));
                     if let Err(_) =  tx_gas_meter.add_tx_size_gas(tx_bytes.len()) {
-                        let _ = temp_block_gas_meter.finalize_transaction(tx_gas_meter.get_current_transaction_gas());
+                        // Add the declared tx gas limit to the block gas meter even in case of error
+                        let _ = temp_block_gas_meter.finalize_transaction(tx_gas_meter);
 
                         return TxResult {
                             code: ErrorCodes::TxGasLimit.into(),
@@ -420,7 +421,7 @@ where
                         };
                     }
                     
-                                        if let Err(_) = temp_block_gas_meter.finalize_transaction(tx_gas_meter.get_current_transaction_gas()){
+                                        if let Err(_) = temp_block_gas_meter.finalize_transaction(tx_gas_meter){
                         return TxResult {
                             code: ErrorCodes::BlockGasLimit.into(),
                             

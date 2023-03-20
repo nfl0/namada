@@ -73,7 +73,6 @@ pub mod wrapper_tx {
     /// not the raw amount
     #[derive(
         Debug,
-        Copy,
         Clone,
         PartialEq,
         Serialize,

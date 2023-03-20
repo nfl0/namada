@@ -149,7 +149,7 @@ where
                     if let (Some(block_time), Some(exp)) = (block_time.as_ref(), &tx.expiration) {
                         if block_time > exp { return None }
                     }
-                    if let Ok(TxType::Wrapper(ref wrapper)) = process_tx(tx) {
+                    if let Ok(TxType::Wrapper(wrapper)) = process_tx(tx) {
 
         // Check tx gas limit
         let mut tx_gas_meter = TxGasMeter::new(wrapper.gas_limit.into());
@@ -158,7 +158,7 @@ where
                             return None;
                         }
 
-                    if temp_block_gas_meter.try_finalize_transaction(wrapper.gas_limit.clone().into()).is_ok() {
+                    if temp_block_gas_meter.try_finalize_transaction(tx_gas_meter).is_ok() {
                         return Some(tx_bytes.clone());
         }
                     }

@@ -730,7 +730,7 @@ where
                 .expect("Missing max_block_gas parameter in storage");
             let mut block_gas_meter = BlockGasMeter::new(block_gas_limit);
             if let Err(_) = block_gas_meter
-                .finalize_transaction(gas_meter.get_current_transaction_gas())
+                .finalize_transaction(gas_meter)
             {
                 response.code = ErrorCodes::BlockGasLimit.into();
                 response.log =
