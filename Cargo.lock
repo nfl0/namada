@@ -3350,7 +3350,6 @@ dependencies = [
 [[package]]
 name = "masp_primitives"
 version = "0.5.0"
-source = "git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c#bee40fc465f6afbd10558d12fe96eb1742eee45c"
 dependencies = [
  "aes",
  "bip0039",
@@ -3381,6 +3380,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "masp_primitives"
+version = "0.5.0"
+source = "git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c#bee40fc465f6afbd10558d12fe96eb1742eee45c"
+dependencies = [
+ "aes",
+ "bip0039",
+ "bitvec",
+ "blake2b_simd 1.0.0",
+ "blake2s_simd 1.0.0",
+ "bls12_381",
+ "borsh",
+ "byteorder",
+ "chacha20poly1305",
+ "crypto_api_chachapoly",
+ "ff",
+ "fpe",
+ "group",
+ "hex",
+ "incrementalmerkletree",
+ "jubjub",
+ "lazy_static",
+ "rand 0.8.5",
+ "rand_core 0.6.4",
+ "serde 1.0.147",
+ "sha2 0.9.9",
+ "subtle",
+ "zcash_encoding",
+ "zcash_primitives",
+]
+
+[[package]]
+name = "masp_proofs"
+version = "0.5.0"
+dependencies = [
+ "bellman",
+ "blake2b_simd 1.0.0",
+ "bls12_381",
+ "byteorder",
+ "directories",
+ "ff",
+ "group",
+ "itertools",
+ "jubjub",
+ "lazy_static",
+ "masp_primitives 0.5.0",
+ "minreq",
+ "rand_core 0.6.4",
+ "wagyu-zcash-parameters",
+ "zcash_primitives",
+ "zcash_proofs",
+]
+
+[[package]]
 name = "masp_proofs"
 version = "0.5.0"
 source = "git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c#bee40fc465f6afbd10558d12fe96eb1742eee45c"
@@ -3395,10 +3447,8 @@ dependencies = [
  "itertools",
  "jubjub",
  "lazy_static",
- "masp_primitives",
- "minreq",
+ "masp_primitives 0.5.0 (git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c)",
  "rand_core 0.6.4",
- "wagyu-zcash-parameters",
  "zcash_primitives",
  "zcash_proofs",
 ]
@@ -3536,9 +3586,9 @@ checksum = "4c785bc6027fd359756e538541c8624012ba3776d3d3fe123885643092ed4132"
 dependencies = [
  "lazy_static",
  "log 0.4.17",
- "rustls 0.20.7",
+ "rustls 0.20.8",
  "webpki 0.22.0",
- "webpki-roots 0.22.5",
+ "webpki-roots 0.22.6",
 ]
 
 [[package]]
@@ -3656,8 +3706,8 @@ dependencies = [
  "itertools",
  "libsecp256k1",
  "loupe",
- "masp_primitives",
- "masp_proofs",
+ "masp_primitives 0.5.0",
+ "masp_proofs 0.5.0",
  "namada_core",
  "namada_proof_of_stake",
  "orion",
@@ -3726,8 +3776,8 @@ dependencies = [
  "itertools",
  "libc",
  "libloading",
- "masp_primitives",
- "masp_proofs",
+ "masp_primitives 0.5.0",
+ "masp_proofs 0.5.0",
  "namada",
  "num-derive",
  "num-traits 0.2.15",
@@ -3806,7 +3856,7 @@ dependencies = [
  "index-set",
  "itertools",
  "libsecp256k1",
- "masp_primitives",
+ "masp_primitives 0.5.0",
  "pretty_assertions",
  "proptest",
  "prost",
@@ -3914,7 +3964,7 @@ name = "namada_tx_prelude"
 version = "0.12.0"
 dependencies = [
  "borsh",
- "masp_primitives",
+ "masp_primitives 0.5.0",
  "namada_core",
  "namada_macros",
  "namada_proof_of_stake",
@@ -3930,8 +3980,8 @@ version = "0.12.0"
 dependencies = [
  "borsh",
  "hex",
- "masp_primitives",
- "masp_proofs",
+ "masp_primitives 0.5.0 (git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c)",
+ "masp_proofs 0.5.0 (git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c)",
  "namada_core",
 ]
 
@@ -5384,9 +5434,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.20.7"
+version = "0.20.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "539a2bfe908f471bfa933876bd1eb6a19cf2176d375f82ef7f99530a40e48c2c"
+checksum = "fff78fc74d175294f4e83b28343315ffcfb114b156f0185e9741cb5570f50e2f"
 dependencies = [
  "log 0.4.17",
  "ring",
@@ -7719,9 +7769,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "0.22.5"
+version = "0.22.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "368bfe657969fb01238bb756d351dcade285e0f6fcbd36dcb23359a5169975be"
+checksum = "b6c71e40d7d2c34a5106301fb632274ca37242cd0c9d3e64dbece371a40a2d87"
 dependencies = [
  "webpki 0.22.0",
 ]

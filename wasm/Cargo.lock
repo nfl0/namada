@@ -1523,7 +1523,7 @@ dependencies = [
 [[package]]
 name = "equihash"
 version = "0.1.0"
-source = "git+https://github.com/zcash/librustzcash/?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
+source = "git+https://github.com/zcash/librustzcash?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
 dependencies = [
  "blake2b_simd 1.0.0",
  "byteorder",
@@ -2592,7 +2592,6 @@ dependencies = [
 [[package]]
 name = "masp_primitives"
 version = "0.5.0"
-source = "git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c#bee40fc465f6afbd10558d12fe96eb1742eee45c"
 dependencies = [
  "aes",
  "bip0039",
@@ -2623,6 +2622,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "masp_primitives"
+version = "0.5.0"
+source = "git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c#bee40fc465f6afbd10558d12fe96eb1742eee45c"
+dependencies = [
+ "aes",
+ "bip0039",
+ "bitvec",
+ "blake2b_simd 1.0.0",
+ "blake2s_simd 1.0.0",
+ "bls12_381",
+ "borsh",
+ "byteorder",
+ "chacha20poly1305",
+ "crypto_api_chachapoly",
+ "ff",
+ "fpe",
+ "group",
+ "hex",
+ "incrementalmerkletree",
+ "jubjub",
+ "lazy_static",
+ "rand 0.8.5",
+ "rand_core 0.6.4",
+ "serde",
+ "sha2 0.9.9",
+ "subtle",
+ "zcash_encoding",
+ "zcash_primitives",
+]
+
+[[package]]
+name = "masp_proofs"
+version = "0.5.0"
+dependencies = [
+ "bellman",
+ "blake2b_simd 1.0.0",
+ "bls12_381",
+ "byteorder",
+ "directories",
+ "ff",
+ "group",
+ "itertools",
+ "jubjub",
+ "lazy_static",
+ "masp_primitives 0.5.0",
+ "rand_core 0.6.4",
+ "zcash_primitives",
+ "zcash_proofs",
+]
+
+[[package]]
 name = "masp_proofs"
 version = "0.5.0"
 source = "git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c#bee40fc465f6afbd10558d12fe96eb1742eee45c"
@@ -2637,7 +2687,7 @@ dependencies = [
  "itertools",
  "jubjub",
  "lazy_static",
- "masp_primitives",
+ "masp_primitives 0.5.0 (git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c)",
  "rand_core 0.6.4",
  "zcash_primitives",
  "zcash_proofs",
@@ -2813,8 +2863,8 @@ dependencies = [
  "ibc-proto",
  "itertools",
  "loupe",
- "masp_primitives",
- "masp_proofs",
+ "masp_primitives 0.5.0",
+ "masp_proofs 0.5.0",
  "namada_core",
  "namada_proof_of_stake",
  "orion",
@@ -2871,7 +2921,7 @@ dependencies = [
  "index-set",
  "itertools",
  "libsecp256k1",
- "masp_primitives",
+ "masp_primitives 0.5.0",
  "proptest",
  "prost",
  "prost-types",
@@ -2948,7 +2998,7 @@ name = "namada_tx_prelude"
 version = "0.12.0"
 dependencies = [
  "borsh",
- "masp_primitives",
+ "masp_primitives 0.5.0",
  "namada_core",
  "namada_macros",
  "namada_proof_of_stake",
@@ -2964,8 +3014,8 @@ version = "0.12.0"
 dependencies = [
  "borsh",
  "hex",
- "masp_primitives",
- "masp_proofs",
+ "masp_primitives 0.5.0 (git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c)",
+ "masp_proofs 0.5.0 (git+https://github.com/anoma/masp?rev=bee40fc465f6afbd10558d12fe96eb1742eee45c)",
  "namada_core",
 ]
 
@@ -2988,8 +3038,8 @@ version = "0.12.0"
 dependencies = [
  "borsh",
  "getrandom 0.2.8",
- "masp_primitives",
- "masp_proofs",
+ "masp_primitives 0.5.0",
+ "masp_proofs 0.5.0",
  "namada",
  "namada_tests",
  "namada_tx_prelude",
@@ -5796,7 +5846,7 @@ dependencies = [
 [[package]]
 name = "zcash_encoding"
 version = "0.0.0"
-source = "git+https://github.com/zcash/librustzcash/?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
+source = "git+https://github.com/zcash/librustzcash?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
 dependencies = [
  "byteorder",
  "nonempty",
@@ -5817,7 +5867,7 @@ dependencies = [
 [[package]]
 name = "zcash_note_encryption"
 version = "0.1.0"
-source = "git+https://github.com/zcash/librustzcash/?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
+source = "git+https://github.com/zcash/librustzcash?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
 dependencies = [
  "chacha20",
  "chacha20poly1305",
@@ -5828,7 +5878,7 @@ dependencies = [
 [[package]]
 name = "zcash_primitives"
 version = "0.5.0"
-source = "git+https://github.com/zcash/librustzcash/?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
+source = "git+https://github.com/zcash/librustzcash?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
 dependencies = [
  "aes",
  "bip0039",
@@ -5854,13 +5904,13 @@ dependencies = [
  "sha2 0.9.9",
  "subtle",
  "zcash_encoding",
- "zcash_note_encryption 0.1.0 (git+https://github.com/zcash/librustzcash/?rev=2425a08)",
+ "zcash_note_encryption 0.1.0 (git+https://github.com/zcash/librustzcash?rev=2425a08)",
 ]
 
 [[package]]
 name = "zcash_proofs"
 version = "0.5.0"
-source = "git+https://github.com/zcash/librustzcash/?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
+source = "git+https://github.com/zcash/librustzcash?rev=2425a08#2425a0869098e3b0588ccd73c42716bcf418612c"
 dependencies = [
  "bellman",
  "blake2b_simd 1.0.0",

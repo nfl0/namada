@@ -9,7 +9,8 @@ version = "0.12.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["abciplus", "namada-sdk"]
+default = ["abciplus", "namada-sdk", "multicore"]
+multicore = ["masp_proofs/multicore", "bellman/multicore", "namada_core/multicore"]
 # NOTE "dev" features that shouldn't be used in live networks are enabled by default for now
 dev = []
 ferveo-tpke = [
@@ -93,7 +94,7 @@ async-std = "1.11.0"
 namada_core = {path = "../core", default-features = false, features = ["secp256k1-sign-verify"]}
 namada_proof_of_stake = {path = "../proof_of_stake", default-features = false}
 async-trait = {version = "0.1.51", optional = true}
-bellman = "0.11.2"
+bellman = { version = "0.11.2", default-features = false, features = ["groth16"] }
 bls12_381 = "0.6.1"
 borsh = "0.9.0"
 circular-queue = "0.2.6"
@@ -137,8 +138,10 @@ wasmer-engine-universal = {version = "=2.2.0", optional = true}
 wasmer-vm = {version = "2.2.0", optional = true}
 wasmparser = "0.83.0"
 #libmasp = { git = "https://github.com/anoma/masp", branch = "murisi/masp-incentive" }
-masp_primitives = { git = "https://github.com/anoma/masp", rev = "bee40fc465f6afbd10558d12fe96eb1742eee45c" }
-masp_proofs = { git = "https://github.com/anoma/masp", rev = "bee40fc465f6afbd10558d12fe96eb1742eee45c" }
+# masp_primitives = { git = "https://github.com/anoma/masp", rev = "bee40fc465f6afbd10558d12fe96eb1742eee45c"}
+masp_primitives = { path = "/home/mj/Projects/heliax/masp/masp_primitives" }
+# masp_proofs = { git = "https://github.com/anoma/masp", rev = "bee40fc465f6afbd10558d12fe96eb1742eee45c", default-features = false, features=["local-prover"]}
+masp_proofs = { path = "/home/mj/Projects/heliax/masp/masp_proofs", default-features = false, features = ["local-prover"] }
 rand = {version = "0.8", default-features = false, optional = true}
 rand_core = {version = "0.6", default-features = false, optional = true}
 zeroize = "1.5.5"

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use async_std::io;
 use async_std::io::prelude::WriteExt;
+use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use masp_proofs::prover::LocalTxProver;
 use namada::ledger::governance::storage as gov_storage;
@@ -321,6 +322,7 @@ impl Default for CLIShieldedUtils {
     }
 }
 
+#[async_trait(?Send)]
 impl masp::ShieldedUtils for CLIShieldedUtils {
     type C = tendermint_rpc::HttpClient;
 
@@ -339,7 +341,7 @@ impl masp::ShieldedUtils for CLIShieldedUtils {
 
     /// Try to load the last saved shielded context from the given context
     /// directory. If this fails, then leave the current context unchanged.
-    fn load(self) -> std::io::Result<masp::ShieldedContext<Self>> {
+    async fn load(self) -> std::io::Result<masp::ShieldedContext<Self>> {
         // Try to load shielded context from file
         let mut ctx_file = File::open(self.context_dir.join(FILE_NAME))?;
         let mut bytes = Vec::new();
@@ -352,7 +354,10 @@ impl masp::ShieldedUtils for CLIShieldedUtils {
     }
 
     /// Save this shielded context into its associated context directory
-    fn save(&self, ctx: &masp::ShieldedContext<Self>) -> std::io::Result<()> {
+    async fn save(
+        &self,
+        ctx: &masp::ShieldedContext<Self>,
+    ) -> std::io::Result<()> {
         // TODO: use mktemp crate?
         let tmp_path = self.context_dir.join(TMP_FILE_NAME);
         {
@@ -684,7 +689,11 @@ pub async fn submit_vote_proposal<
                     "Proposal start epoch for proposal id {} is not definied.",
                     proposal_id
                 );
-                if !args.tx.force { safe_exit(1) } else { Ok(()) }
+                if !args.tx.force {
+                    safe_exit(1)
+                } else {
+                    Ok(())
+                }
             }
         }
     }
