@@ -162,7 +162,7 @@ where
     CA: 'static + WasmCacheAccess + Sync,
 {
     tx_gas_meter
-        .add_compiling_fee(tx.code.len())
+        .add_compiling_gas(tx.code.len())
         .map_err(Error::GasError)?;
     let tx_hash = Hash::sha256(&tx.code).to_string().to_ascii_lowercase();
     let tx_gas_required = match gas_table.get(tx_hash.as_str()) {
@@ -276,7 +276,7 @@ where
                         vp.ok_or_else(|| Error::MissingAddress(addr.clone()))?;
 
                     gas_meter
-                        .add_compiling_fee(vp.len())
+                        .add_compiling_gas(vp.len())
                         .map_err(Error::GasError)?;
 
                     let vp_hash =

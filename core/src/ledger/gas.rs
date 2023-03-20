@@ -134,8 +134,7 @@ impl TxGasMeter {
     }
 
     /// Add the compiling cost proportionate to the code length
-    pub fn add_compiling_fee(&mut self, bytes_len: usize) -> Result<()> {
-        //FIXME: rename to add_compiling_gas
+    pub fn add_compiling_gas(&mut self, bytes_len: usize) -> Result<()> {
         self.add(bytes_len as u64 * COMPILE_GAS_PER_BYTE)
     }
 
@@ -190,7 +189,7 @@ impl VpGasMeter {
     }
 
     /// Add the compiling cost proportionate to the code length
-    pub fn add_compiling_fee(&mut self, bytes_len: usize) -> Result<()> {
+    pub fn add_compiling_gas(&mut self, bytes_len: usize) -> Result<()> {
         self.add(bytes_len as u64 * COMPILE_GAS_PER_BYTE)
     }
 }
