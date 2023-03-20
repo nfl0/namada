@@ -1,6 +1,7 @@
 //! Implementation of the [`RequestPrepareProposal`] ABCI++ method for the Shell
 
 use namada::core::hints;
+use namada::core::ledger::gas::TxGasMeter;
 use namada::core::ledger::parameters;
 use namada::ledger::gas::BlockGasMeter;
 use namada::ledger::storage::{DBIter, StorageHasher, DB};
@@ -150,7 +151,13 @@ where
                     }
                     if let Ok(TxType::Wrapper(ref wrapper)) = process_tx(tx) {
 
-// Check tx gas limit
+        // Check tx gas limit
+        let mut tx_gas_meter = TxGasMeter::new(wrapper.gas_limit.into());
+        if tx_gas_meter
+            .add_tx_size_gas(tx_bytes.len()).is_err() {
+                            return None;
+                        }
+
                     if temp_block_gas_meter.try_finalize_transaction(wrapper.gas_limit.clone().into()).is_ok() {
                         return Some(tx_bytes.clone());
         }
