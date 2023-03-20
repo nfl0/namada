@@ -21,6 +21,10 @@ const PARALLEL_GAS_DIVIDER: u64 = 10;
 
 /// The minimum gas cost for accessing the storage
 pub const MIN_STORAGE_GAS: u64 = 1;
+/// The gas cost for veryfing the signature of a transaction
+pub const VERIFY_TX_SIG_GAS_COST: u64 = 1000;
+/// The gas cost for validating wasm vp code
+pub const WASM_VALIDATION_GAS_PER_BYTE: u64 = 1;
 
 /// Gas module result for functions that may fail
 pub type Result<T> = std::result::Result<T, Error>;
@@ -73,6 +77,7 @@ impl BlockGasMeter {
     /// Add the transaction gas to the block's total gas. It will return
     /// error when the consumed gas exceeds the block gas limit, but the state
     /// will still be updated.
+    //FIXME: this and the try version shold consume as parameter a tx or vp gas meter
     pub fn finalize_transaction(&mut self, tx_gas: u64) -> Result<()> {
         self.block_gas = self
             .block_gas

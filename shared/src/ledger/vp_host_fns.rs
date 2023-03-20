@@ -2,8 +2,10 @@
 
 use std::num::TryFromIntError;
 
+use namada_core::ledger::gas::VERIFY_TX_SIG_GAS_COST;
 use namada_core::types::address::Address;
 use namada_core::types::hash::Hash;
+use namada_core::types::key::common;
 use namada_core::types::storage::{
     BlockHash, BlockHeight, Epoch, Key, TxIndex,
 };
@@ -358,4 +360,16 @@ where
         return Ok(Some((key, val)));
     }
     Ok(None)
+}
+
+/// Verify the signature of a transaction
+pub fn verify_tx_signature(
+    gas_meter: &mut VpGasMeter,
+    tx: &Tx,
+    pk: &common::PublicKey,
+    sig: &common::Signature,
+) -> EnvResult<bool> {
+    add_gas(gas_meter, VERIFY_TX_SIG_GAS_COST)?;
+
+    Ok(tx.verify_sig(pk, sig).is_ok())
 }
