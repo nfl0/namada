@@ -481,4 +481,104 @@ mod test_prepare_proposal {
         eprintln!("Proposal: {:?}", result.txs);
         assert!(result.txs.is_empty());
     }
+
+    /// Check that a tx requiring more gas than the block limit is not included in the block
+    #[test]
+    fn test_exceeding_max_block_gas_tx() {
+        let (shell, _) = test_utils::setup(1);
+
+        let block_gas_limit: u64 = shell
+            .read_storage_key(&parameters::storage::get_max_block_gas_key())
+            .expect("Missing max_block_gas parameter in storage");
+        let keypair = gen_keypair();
+
+        let tx = Tx::new(
+            "wasm_code".as_bytes().to_owned(),
+            Some("transaction data".as_bytes().to_owned()),
+            shell.chain_id.clone(),
+            None,
+        );
+
+        let wrapper = WrapperTx::new(
+            Fee {
+                amount: 100.into(),
+                token: shell.wl_storage.storage.native_token.clone(),
+            },
+            &keypair,
+            Epoch(0),
+            (block_gas_limit + 1).into(),
+            tx,
+            Default::default(),
+            #[cfg(not(feature = "mainnet"))]
+            None,
+        )
+        .sign(&keypair, shell.chain_id.clone(), None)
+        .expect("Wrapper signing failed");
+
+        let req = RequestPrepareProposal {
+            txs: vec![wrapper.to_bytes()],
+            max_tx_bytes: 0,
+            time: None,
+            ..Default::default()
+        };
+        #[cfg(feature = "abcipp")]
+        assert_eq!(
+            shell.prepare_proposal(req).tx_records,
+            vec![record::remove(wrapper.to_bytes())]
+        );
+        #[cfg(not(feature = "abcipp"))]
+        {
+            let result = shell.prepare_proposal(req);
+            eprintln!("Proposal: {:?}", result.txs);
+            assert!(result.txs.is_empty());
+        }
+    }
+
+    // Check that a wrapper requiring more gas than its limit is not included in the block
+    #[test]
+    fn test_exceeding_gas_limit_wrapper() {
+        let (shell, _) = test_utils::setup(1);
+        let keypair = gen_keypair();
+
+        let tx = Tx::new(
+            "wasm_code".as_bytes().to_owned(),
+            Some("transaction data".as_bytes().to_owned()),
+            shell.chain_id.clone(),
+            None,
+        );
+
+        let wrapper = WrapperTx::new(
+            Fee {
+                amount: 100.into(),
+                token: shell.wl_storage.storage.native_token.clone(),
+            },
+            &keypair,
+            Epoch(0),
+            0.into(),
+            tx,
+            Default::default(),
+            #[cfg(not(feature = "mainnet"))]
+            None,
+        )
+        .sign(&keypair, shell.chain_id.clone(), None)
+        .expect("Wrapper signing failed");
+
+        let req = RequestPrepareProposal {
+            txs: vec![wrapper.to_bytes()],
+            max_tx_bytes: 0,
+            time: None,
+            ..Default::default()
+        };
+        #[cfg(feature = "abcipp")]
+        assert_eq!(
+            shell.prepare_proposal(req).tx_records,
+            vec![record::remove(wrapper.to_bytes())]
+        );
+        #[cfg(not(feature = "abcipp"))]
+        {
+            let result = shell.prepare_proposal(req);
+            eprintln!("Proposal: {:?}", result.txs);
+            assert!(result.txs.is_empty());
+        }
+    }
 }
