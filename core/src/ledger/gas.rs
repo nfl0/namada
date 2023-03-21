@@ -200,8 +200,8 @@ impl VpGasMeter {
 }
 
 impl VpsGas {
-    /// Set the gas cost from a single VP run.
-    pub fn set(&mut self, vp_gas_meter: &VpGasMeter) -> Result<()> {
+    /// Set the gas cost from a single VP run. It consumes the [`VpGasMeter`] instance which shouldn't be accessed passed this point.
+    pub fn set(&mut self, vp_gas_meter: VpGasMeter) -> Result<()> {
         debug_assert_eq!(self.max, None);
         debug_assert!(self.rest.is_empty());
         self.max = Some(vp_gas_meter.current_gas);

@@ -434,7 +434,7 @@ where
             // Returning error from here will short-circuit the VP parallel
             // execution. It's important that we only short-circuit gas
             // errors to get deterministic gas costs
-            result.gas_used.set(&gas_meter).map_err(Error::GasError)?;
+            result.gas_used.set(gas_meter).map_err(Error::GasError)?;
             match accept {
                 Ok(accepted) => {
                     if !accepted {
