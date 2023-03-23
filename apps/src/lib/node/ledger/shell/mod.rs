@@ -803,7 +803,6 @@ where
     #[allow(dead_code)]
     /// Simulate validation and application of a transaction.
     fn dry_run_tx(&self, tx_bytes: &[u8]) -> response::Query {
-        //FIXME: should we simulate also the wrapper part for gas?
         let mut response = response::Query::default();
         let gas_table: BTreeMap<String, u64> = self
             .read_storage_key(&parameters::storage::get_gas_table_storage_key())
