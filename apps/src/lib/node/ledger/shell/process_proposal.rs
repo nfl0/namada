@@ -603,6 +603,7 @@ where
 mod test_process_proposal {
     use borsh::BorshDeserialize;
     use namada::ledger::parameters::storage::get_wrapper_tx_fees_key;
+    use namada::ledger::storage_api::StorageWrite;
     use namada::proto::SignedTxData;
     use namada::types::hash::Hash;
     use namada::types::key::*;
@@ -782,8 +783,7 @@ const GAS_LIMIT_MULTIPLIER: u64 = 1;
         );
         shell
             .wl_storage
-            .storage
-            .write(&balance_key, Amount::whole(99).try_to_vec().unwrap())
+            .write(&balance_key, Amount::whole(99))
             .unwrap();
 
         let tx = Tx::new(
@@ -842,8 +842,7 @@ const GAS_LIMIT_MULTIPLIER: u64 = 1;
         );
         shell
             .wl_storage
-            .write_log
-            .write(&balance_key, Amount::whole(99).try_to_vec().unwrap())
+            .write(&balance_key, Amount::whole(99))
             .unwrap();
         shell
             .wl_storage
