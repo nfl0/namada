@@ -1146,6 +1146,8 @@ mod test_utils {
             },
             num_validators,
         );
+        test.commit();
+
         (test, receiver)
     }
 
