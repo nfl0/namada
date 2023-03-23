@@ -164,13 +164,6 @@ impl ErrorCodes {
     }
 }
 
-impl ErrorCodes {
-    /// Whether to charge fees depending on the exit code of a transaction
-    pub fn charges_fee(&self) -> bool {
-        matches!(self, Self::Ok | Self::WasmRuntimeError | Self::TxGasLimit)
-    }
-}
-
 impl From<ErrorCodes> for u32 {
     fn from(code: ErrorCodes) -> u32 {
         code.to_u32().unwrap()

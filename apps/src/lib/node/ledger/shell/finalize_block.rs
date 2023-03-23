@@ -197,11 +197,13 @@ where
                         .storage
                         .delete(&tx_hash_key)
                         .expect("Error while deleting tx hash from storage");
-                } else if let TxType::Wrapper(wrapper) = &tx_type {
-                    // Charge fee if needed
-                    if ErrorCodes::from_u32(processed_tx.result.code)
-                        .unwrap()
-                        .charges_fee()
+                }
+
+                #[cfg(not(feature = "abcipp"))]
+                if let TxType::Wrapper(wrapper) = &tx_type {
+                    // Charge fee if wrapper transaction went out of gas
+                    if ErrorCodes::from_u32(processed_tx.result.code).unwrap()
+                        == ErrorCodes::TxGasLimit
                     {
                         #[cfg(not(feature = "mainnet"))]
                         let has_valid_pow =
@@ -213,6 +215,7 @@ where
                         );
                     }
                 }
+
                 continue;
             }
 
