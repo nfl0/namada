@@ -82,7 +82,9 @@ where
              {new_epoch}."
         );
         let gas_table: BTreeMap<String, u64> = self
-            .read_storage_key(&parameters::storage::get_gas_table_storage_key())
+            .wl_storage
+            .read(&parameters::storage::get_gas_table_storage_key())
+            .expect("Error while reading from storage")
             .expect("Missing gas table in storage");
 
         if new_epoch {
@@ -1836,7 +1838,6 @@ mod test_finalize_block {
         assert_eq!(code, String::from(ErrorCodes::WasmRuntimeError).as_str());
 
         assert!(!shell
-            .shell
             .wl_storage
             .has_key(&inner_hash_key)
             .expect("Test failed"))

@@ -141,15 +141,16 @@ where
         let mut tx_queue_iter = self.wl_storage.storage.tx_queue.iter();
         let mut temp_wl_storage = TempWlStorage::new(&self.wl_storage.storage);
         let mut metadata = ValidationMeta::from(&self.wl_storage);
-        let mut temp_block_gas_meter =
-            BlockGasMeter::new(
-                self.read_storage_key(
-                    &parameters::storage::get_max_block_gas_key(),
-                )
+        let mut temp_block_gas_meter = BlockGasMeter::new(
+            self.wl_storage
+                .read(&parameters::storage::get_max_block_gas_key())
+                .expect("Error while reading from storage")
                 .expect("Missing max_block_gas parameter in storage"),
-            );
+        );
         let gas_table: BTreeMap<String, u64> = self
-            .read_storage_key(&parameters::storage::get_gas_table_storage_key())
+            .wl_storage
+            .read(&parameters::storage::get_gas_table_storage_key())
+            .expect("Error while reading from storage")
             .expect("Missing gas table in storage");
 
         let mut wrapper_index = 0;
@@ -1775,7 +1776,9 @@ const GAS_LIMIT_MULTIPLIER: u64 = 1;
         let (mut shell, _) = test_utils::setup(1);
 
         let block_gas_limit: u64 = shell
-            .read_storage_key(&parameters::storage::get_max_block_gas_key())
+            .wl_storage
+            .read(&parameters::storage::get_max_block_gas_key())
+            .expect("Error while reading from storage")
             .expect("Missing max_block_gas parameter in storage");
         let keypair = super::test_utils::gen_keypair();
 

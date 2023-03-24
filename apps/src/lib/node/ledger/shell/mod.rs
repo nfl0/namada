@@ -719,7 +719,9 @@ where
 
             // Max block gas
             let block_gas_limit: u64 = self
-                .read_storage_key(&parameters::storage::get_max_block_gas_key())
+                .wl_storage
+                .read(&parameters::storage::get_max_block_gas_key())
+                .expect("Error while reading from storage")
                 .expect("Missing max_block_gas parameter in storage");
             let mut block_gas_meter = BlockGasMeter::new(block_gas_limit);
             if let Err(_) = block_gas_meter.finalize_transaction(gas_meter) {
@@ -805,15 +807,16 @@ where
     fn dry_run_tx(&self, tx_bytes: &[u8]) -> response::Query {
         let mut response = response::Query::default();
         let gas_table: BTreeMap<String, u64> = self
-            .read_storage_key(&parameters::storage::get_gas_table_storage_key())
+            .wl_storage
+            .read(&parameters::storage::get_gas_table_storage_key())
+            .expect("Error while reading from storage")
             .expect("Missing gas table in storage");
-        let mut gas_meter =
-            TxGasMeter::new(
-                self.read_storage_key(
-                    &parameters::storage::get_max_block_gas_key(),
-                )
-                .expect("Missing parameter in storage"),
-            );
+        let mut gas_meter = TxGasMeter::new(
+            self.wl_storage
+                .read(&parameters::storage::get_max_block_gas_key())
+                .expect("Error while reading from storage")
+                .expect("Missing max_block_gas parameter in storage"),
+        );
         let mut write_log = WriteLog::default();
         let mut vp_wasm_cache = self.vp_wasm_cache.read_only();
         let mut tx_wasm_cache = self.tx_wasm_cache.read_only();
@@ -1595,7 +1598,9 @@ mod test_mempool_validate {
         let (shell, _) = test_utils::setup(1);
 
         let block_gas_limit: u64 = shell
-            .read_storage_key(&parameters::storage::get_max_block_gas_key())
+            .wl_storage
+            .read(&parameters::storage::get_max_block_gas_key())
+            .expect("Error while reading from storage")
             .expect("Missing max_block_gas parameter in storage");
         let keypair = super::test_utils::gen_keypair();
 
