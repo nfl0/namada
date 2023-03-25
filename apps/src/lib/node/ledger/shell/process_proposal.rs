@@ -365,13 +365,21 @@ where
                                         .to_ascii_lowercase();
                                     let tx_gas = match gas_table.get(tx_hash.as_str()) {
                                         Some(gas) => gas.to_owned(),
-        #[cfg(any(test, feature = "testing"))]
-        None => 1000, 
-        #[cfg(not(any(test, feature = "testing")))]
-                                        None => return TxResult {
-                                            // Tx is not whitelisted
-                                          code: ErrorCodes::Undecryptable.into(),
-                                            info: "Tx is not whitelisted".to_string()   
+                                        #[cfg(any(test, feature = "testing"))]
+                                        None => 1_000,
+                                        #[cfg(not(any(
+                                            test,
+                                            feature = "testing"
+                                        )))]
+                                        None => {
+                                            return TxResult {
+                                                // Tx is not whitelisted
+                                                code:
+                                                    ErrorCodes::DecryptedTxGasLimit
+                                                        .into(),
+                                                info: "Tx is not whitelisted"
+                                                    .to_string(),
+                                            };
                                         }
                                     };
                                     let inner_tx_gas_limit = temp_wl_storage.storage.tx_queue.get(tx_index).map_or(0, |wrapper| wrapper.gas);
@@ -408,12 +416,17 @@ where
                     },
                 }}
                 TxType::Wrapper(wrapper) => {
-                    // Account for gas. This is done even if the transaction is later deemed invalid, to incentivize the proposer to
-                    // include only valid transaction and avoid wasting block gas limit
-                    let mut tx_gas_meter = TxGasMeter::new(u64::from(&wrapper.gas_limit));
-                    if let Err(_) =  tx_gas_meter.add_tx_size_gas(tx_bytes.len()) {
-                        // Add the declared tx gas limit to the block gas meter even in case of an error
-                        let _ = temp_block_gas_meter.finalize_transaction(tx_gas_meter);
+                    // Account for gas. This is done even if the transaction is
+                    // later deemed invalid, to incentivize the proposer to
+                    // include only valid transaction and avoid wasting block
+                    // gas limit (ABCI)
+                    let mut tx_gas_meter =
+                        TxGasMeter::new(u64::from(&wrapper.gas_limit));
+                    if tx_gas_meter.add_tx_size_gas(tx_bytes.len()).is_err() {
+                        // Add the declared tx gas limit to the block gas meter
+                        // even in case of an error
+                        let _ = temp_block_gas_meter
+                            .finalize_transaction(tx_gas_meter);
 
                         return TxResult {
                             code: ErrorCodes::TxGasLimit.into(),
