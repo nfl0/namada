@@ -67,8 +67,6 @@ pub enum Error {
     ),
     #[error("Access to an internal address {0} is forbidden")]
     AccessForbidden(InternalAddress),
-    #[error("The gas cost for the tx/vp {0} was not found in storage")]
-    MissingGasCost(String),
 }
 
 /// Result of applying a transaction
@@ -167,10 +165,10 @@ where
     let tx_hash = Hash::sha256(&tx.code).to_string().to_ascii_lowercase();
     let tx_gas_required = match gas_table.get(tx_hash.as_str()) {
         Some(gas) => gas.to_owned(),
-        #[cfg(any(test, feature = "testing"))]
+        #[cfg(test)]
         None => 1_000,
-        #[cfg(not(any(test, feature = "testing")))]
-        None => return Err(Error::MissingGasCost(tx_hash)),
+        #[cfg(not(test))]
+        None => 0, // VPs will reject the non-whitelisted tx
     };
     tx_gas_meter.add(tx_gas_required).map_err(Error::GasError)?;
 
@@ -498,10 +496,10 @@ fn add_precomputed_gas(
 ) -> Result<()> {
     let vp_gas_required = match gas_table.get(vp) {
         Some(gas) => gas.to_owned(),
-        #[cfg(any(test, feature = "testing"))]
+        #[cfg(test)]
         None => 1_000,
-        #[cfg(not(any(test, feature = "testing")))]
-        None => return Err(Error::MissingGasCost(vp.to_owned())),
+        #[cfg(not(test))]
+        None => 0,
     };
 
     gas_meter.add(vp_gas_required).map_err(Error::GasError)

@@ -363,32 +363,31 @@ where
                                     let tx_hash = Hash::sha256(tx.code)
                                         .to_string()
                                         .to_ascii_lowercase();
-                                    let tx_gas = match gas_table.get(tx_hash.as_str()) {
-                                        Some(gas) => gas.to_owned(),
-                                        #[cfg(any(test, feature = "testing"))]
-                                        None => 1_000,
-                                        #[cfg(not(any(
-                                            test,
-                                            feature = "testing"
-                                        )))]
-                                        None => {
-                                            return TxResult {
-                                                // Tx is not whitelisted
-                                                code:
-                                                    ErrorCodes::DecryptedTxGasLimit
-                                                        .into(),
-                                                info: "Tx is not whitelisted"
-                                                    .to_string(),
-                                            };
-                                        }
-                                    };
-                                    let inner_tx_gas_limit = temp_wl_storage.storage.tx_queue.get(tx_index).map_or(0, |wrapper| wrapper.gas);
-                                    let mut tx_gas_meter = TxGasMeter::new(inner_tx_gas_limit);
- if let Err(e) = tx_gas_meter.add(tx_gas) {
-                                        
- return TxResult {
-                                            code: ErrorCodes::DecryptedTxGasLimit.into(),
-                                            info: format!("Decrypted transaction gas error: {}", e)
+                                    let tx_gas =
+                                        match gas_table.get(tx_hash.as_str()) {
+                                            Some(gas) => gas.to_owned(),
+                                            #[cfg(test)]
+                                            None => 1_000,
+                                            #[cfg(not(test))]
+                                            None => 0, // VPs will rejected the non-whitelisted tx
+                                        };
+                                    let inner_tx_gas_limit = temp_wl_storage
+                                        .storage
+                                        .tx_queue
+                                        .get(tx_index)
+                                        .map_or(0, |wrapper| wrapper.gas);
+                                    let mut tx_gas_meter =
+                                        TxGasMeter::new(inner_tx_gas_limit);
+                                    if let Err(e) = tx_gas_meter.add(tx_gas) {
+                                        return TxResult {
+                                            code:
+                                                ErrorCodes::DecryptedTxGasLimit
+                                                    .into(),
+                                            info: format!(
+                                                "Decrypted transaction gas \
+                                                 error: {}",
+                                                e
+                                            ),
                                         };
                                 }
                             }

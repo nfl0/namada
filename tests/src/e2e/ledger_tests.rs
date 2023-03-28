@@ -32,7 +32,6 @@ use serde_json::json;
 use setup::constants::*;
 
 use super::helpers::{get_height, is_debug_mode, wait_for_block_height};
-use super::setup::get_all_wasms_hashes;
 use crate::e2e::helpers::{
     epoch_sleep, find_address, find_bonded_stake, get_actor_rpc, get_epoch,
 };
@@ -114,9 +113,7 @@ fn test_node_connectivity_and_consensus() -> Result<()> {
         "--amount",
         "10.1",
         "--gas-limit",
-        "1",
-        "--gas-token",
-        NAM,
+        "20",
         "--node",
         &validator_one_rpc,
     ];
@@ -376,9 +373,7 @@ fn ledger_txs_and_queries() -> Result<()> {
             "--amount",
             "10.1",
             "--gas-limit",
-            "1",
-            "--gas-token",
-            NAM,
+            "2",
             "--node",
             &validator_one_rpc,
         ],
@@ -394,9 +389,7 @@ fn ledger_txs_and_queries() -> Result<()> {
             "--amount",
             "10.1",
             "--gas-limit",
-            "1",
-            "--gas-token",
-            NAM,
+            "2",
             "--node",
             &validator_one_rpc,
         ],
@@ -409,9 +402,7 @@ fn ledger_txs_and_queries() -> Result<()> {
              "--code-path",
              &vp_user,
              "--gas-limit",
-             "1",
-             "--gas-token",
-             NAM,
+             "30",
             "--node",
             &validator_one_rpc,
         ],
@@ -425,9 +416,7 @@ fn ledger_txs_and_queries() -> Result<()> {
             "--data-path",
             "README.md",
             "--gas-limit",
-            "1",
-            "--gas-token",
-            NAM,
+            "2",
             "--node",
             &validator_one_rpc
         ],
@@ -444,9 +433,7 @@ fn ledger_txs_and_queries() -> Result<()> {
             "--alias",
             "Test-Account",
             "--gas-limit",
-            "1",
-            "--gas-token",
-            NAM,
+            "2",
             "--node",
             &validator_one_rpc,
         ],
@@ -465,6 +452,8 @@ fn ledger_txs_and_queries() -> Result<()> {
             // Faucet withdrawal requires an explicit signer
             "--signer",
             ALBERT,
+            "--gas-limit",
+            "2",
             "--node",
             &validator_one_rpc,
         ],
@@ -602,6 +591,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 BTC,
                 "--amount",
                 "10",
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -619,6 +610,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 BTC,
                 "--amount",
                 "15",
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -636,6 +629,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 BTC,
                 "--amount",
                 "20",
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -655,6 +650,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 "10",
                 "--signer",
                 ALBERT,
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -674,6 +671,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 "7",
                 "--signer",
                 ALBERT,
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -693,6 +692,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 "7",
                 "--signer",
                 ALBERT,
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -712,6 +713,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 "7",
                 "--signer",
                 ALBERT,
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -731,6 +734,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 "6",
                 "--signer",
                 ALBERT,
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -787,6 +792,8 @@ fn masp_txs_and_queries() -> Result<()> {
                 "20",
                 "--signer",
                 BERTHA,
+                "--gas-limit",
+                "2",
                 "--node",
                 &validator_one_rpc,
             ],
@@ -2225,7 +2232,7 @@ fn test_bond_queries() -> Result<()> {
         "--amount",
         "100",
         "--gas-limit",
-        "1",
+        "20",
         "--ledger-address",
         &validator_one_rpc,
     ];
@@ -2244,7 +2251,7 @@ fn test_bond_queries() -> Result<()> {
         "--amount",
         "200",
         "--gas-limit",
-        "1",
+        "20",
         "--ledger-address",
         &validator_one_rpc,
     ];
@@ -2275,7 +2282,7 @@ fn test_bond_queries() -> Result<()> {
         "--amount",
         "300",
         "--gas-limit",
-        "1",
+        "20",
         "--ledger-address",
         &validator_one_rpc,
     ];
@@ -2293,7 +2300,7 @@ fn test_bond_queries() -> Result<()> {
         "--amount",
         "412",
         "--gas-limit",
-        "1",
+        "20",
         "--ledger-address",
         &validator_one_rpc,
     ];
@@ -2384,7 +2391,7 @@ fn pos_init_validator() -> Result<()> {
         BERTHA,
         "--unsafe-dont-encrypt",
         "--gas-limit",
-        "1",
+        "20",
         "--commission-rate",
         "0.05",
         "--max-commission-rate-change",
@@ -2409,7 +2416,7 @@ fn pos_init_validator() -> Result<()> {
         "--amount",
         "0.5",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
         &validator_one_rpc,
     ];
@@ -2426,7 +2433,7 @@ fn pos_init_validator() -> Result<()> {
         "--amount",
         "1000.5",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
         &validator_one_rpc,
     ];
@@ -2446,7 +2453,7 @@ fn pos_init_validator() -> Result<()> {
         "--amount",
         "10999.5",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
         &validator_one_rpc,
     ];
@@ -2462,7 +2469,7 @@ fn pos_init_validator() -> Result<()> {
         "--amount",
         "10000",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
         &validator_one_rpc,
     ];
@@ -2532,7 +2539,7 @@ fn ledger_many_txs_in_a_block() -> Result<()> {
         "--amount",
         "1.01",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
     ]);
 
@@ -2584,8 +2591,6 @@ fn ledger_many_txs_in_a_block() -> Result<()> {
 /// 13. Check governance address funds are 0
 #[test]
 fn proposal_submission() -> Result<()> {
-    let working_dir = setup::working_dir();
-
     let test = setup::network(
         |genesis| {
             let parameters = ParametersConfig {
@@ -2593,16 +2598,6 @@ fn proposal_submission() -> Result<()> {
                 max_proposal_bytes: Default::default(),
                 min_num_of_blocks: 4,
                 max_expected_time_per_block: 1,
-                vp_whitelist: Some(get_all_wasms_hashes(
-                    &working_dir,
-                    Some("vp_"),
-                )),
-                // Enable tx whitelist to test the execution of a
-                // non-whitelisted tx by governance
-                tx_whitelist: Some(get_all_wasms_hashes(
-                    &working_dir,
-                    Some("tx_"),
-                )),
                 ..genesis.parameters
             };
 
@@ -2640,7 +2635,7 @@ fn proposal_submission() -> Result<()> {
         "--amount",
         "900",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
         &validator_one_rpc,
     ];
@@ -2667,6 +2662,8 @@ fn proposal_submission() -> Result<()> {
         "--data-path",
         valid_proposal_json_path.to_str().unwrap(),
         "--node",
+        "--gas-limit",
+        "20",
         &validator_one_rpc,
     ];
     let mut client = run!(test, Bin::Client, submit_proposal_args, Some(40))?;
@@ -2768,6 +2765,8 @@ fn proposal_submission() -> Result<()> {
         "--data-path",
         invalid_proposal_json_path.to_str().unwrap(),
         "--node",
+        "--gas-limit",
+        "20",
         &validator_one_rpc,
     ];
     let mut client = run!(test, Bin::Client, submit_proposal_args, Some(40))?;
@@ -2822,6 +2821,8 @@ fn proposal_submission() -> Result<()> {
         "--signer",
         "validator-0",
         "--node",
+        "--gas-limit",
+        "1",
         &validator_one_rpc,
     ];
 
@@ -2844,6 +2845,8 @@ fn proposal_submission() -> Result<()> {
         "--signer",
         BERTHA,
         "--node",
+        "--gas-limit",
+        "1",
         &validator_one_rpc,
     ];
 
@@ -2862,6 +2865,8 @@ fn proposal_submission() -> Result<()> {
         "--signer",
         ALBERT,
         "--node",
+        "--gas-limit",
+        "1",
         &validator_one_rpc,
     ];
 
@@ -3944,7 +3949,7 @@ fn test_genesis_validators() -> Result<()> {
         "--amount",
         "10.1",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
         &validator_one_rpc,
     ];
@@ -4116,7 +4121,7 @@ fn double_signing_gets_slashed() -> Result<()> {
         "--amount",
         "10.1",
         "--gas-limit",
-        "1",
+        "20",
         "--node",
         &validator_one_rpc,
     ];
