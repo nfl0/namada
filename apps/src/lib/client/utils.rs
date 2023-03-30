@@ -26,7 +26,9 @@ use crate::config::genesis::genesis_config::{
     self, GenesisConfig, HexString, ValidatorPreGenesisConfig,
 };
 use crate::config::global::GlobalConfig;
-use crate::config::{self, Config, TendermintMode};
+use crate::config::{
+    self, Config, TendermintMode, DEFAULT_WASM_CHECKSUMS_GAS_FILE,
+};
 use crate::facade::tendermint::node::Id as TendermintNodeId;
 use crate::facade::tendermint_config::net::Address as TendermintAddress;
 use crate::node::ledger::tendermint_node;
@@ -666,11 +668,22 @@ pub fn init_network(
     fs::rename(&temp_dir, &chain_dir).unwrap();
 
     // Copy the WASM checksums
+    //FIXME: hange wasm_checksums_path to wasm_path?
     let wasm_dir_full = chain_dir.join(config::DEFAULT_WASM_DIR);
     fs::create_dir_all(&wasm_dir_full).unwrap();
     fs::copy(
         &wasm_checksums_path,
         wasm_dir_full.join(config::DEFAULT_WASM_CHECKSUMS_FILE),
+    )
+    .unwrap();
+
+    // Copy the gas checksums
+    fs::copy(
+        &wasm_checksums_path
+            .parent()
+            .unwrap()
+            .join(DEFAULT_WASM_CHECKSUMS_GAS_FILE),
+        wasm_dir_full.join(config::DEFAULT_WASM_CHECKSUMS_GAS_FILE),
     )
     .unwrap();
 
@@ -695,6 +708,16 @@ pub fn init_network(
         fs::copy(
             &wasm_checksums_path,
             wasm_dir_full.join(config::DEFAULT_WASM_CHECKSUMS_FILE),
+        )
+        .unwrap();
+
+        // Copy the gas checksums
+        fs::copy(
+            &wasm_checksums_path
+                .parent()
+                .unwrap()
+                .join(DEFAULT_WASM_CHECKSUMS_GAS_FILE),
+            wasm_dir_full.join(config::DEFAULT_WASM_CHECKSUMS_GAS_FILE),
         )
         .unwrap();
 
@@ -837,6 +860,20 @@ pub fn init_network(
             .append_path_with_name(
                 &wasm_checksums_path,
                 release_wasm_checksums_path,
+            )
+            .unwrap();
+        let release_wasm_checksums_gas_path =
+            PathBuf::from(config::DEFAULT_BASE_DIR)
+                .join(chain_id.as_str())
+                .join(config::DEFAULT_WASM_DIR)
+                .join(DEFAULT_WASM_CHECKSUMS_GAS_FILE);
+        release
+            .append_path_with_name(
+                &wasm_checksums_path
+                    .parent()
+                    .unwrap()
+                    .join(DEFAULT_WASM_CHECKSUMS_GAS_FILE),
+                release_wasm_checksums_gas_path,
             )
             .unwrap();
 

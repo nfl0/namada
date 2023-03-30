@@ -27,6 +27,9 @@ pub const DEFAULT_WASM_DIR: &str = "wasm";
 /// The WASM checksums file contains the hashes of built WASMs. It is inside the
 /// WASM dir.
 pub const DEFAULT_WASM_CHECKSUMS_FILE: &str = "checksums.json";
+/// The WASM checksums gas file contains the gas cost of built WASMs. it is inside
+/// the WASM dir.
+pub const DEFAULT_WASM_CHECKSUMS_GAS_FILE: &str = "gas_checksums.json";
 /// Chain-specific Namada configuration. Nested in chain dirs.
 pub const FILENAME: &str = "config.toml";
 /// Chain-specific Tendermint configuration. Nested in chain dirs.
