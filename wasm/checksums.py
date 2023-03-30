@@ -2,7 +2,6 @@ import json
 import glob
 import hashlib
 import os
-import sys
 
 gas = json.load(open("wasm/gas.json"))
 gas_checksums = {}
@@ -17,15 +16,11 @@ for wasm in sorted(glob.glob("wasm/*.wasm")):
     )
     file_key = "{}.wasm".format(file_name)
     file_hash = hashlib.sha256(open(wasm, "rb").read()).hexdigest()
-    checksums[file_key] = "{}.{}.wasm".format(file_name, file_hash)
-
-    # Check gas in whitelist
-    if file_key not in gas:
-        print("{} doesn't have an associated gas cost in gas.json".format(file_key))
-        sys.exit(1)
+    extended_file_name = "{}.{}.wasm".format(file_name, file_hash)
+    checksums[file_key] = extended_file_name
 
     # Add gas to checksum gas
-    gas_checksums[file_hash] = gas[file_key]
+    gas_checksums[extended_file_name] = gas[file_key]
 
     os.rename(wasm, "wasm/{}".format(checksums[file_key]))
 

@@ -920,7 +920,7 @@ pub fn get_all_wasms_hashes(
                 Some(
                     wasm.split('.').collect::<Vec<&str>>()[1]
                         .to_owned()
-                        .to_uppercase(),
+                        .to_lowercase(),
                 )
             } else {
                 None
@@ -931,6 +931,18 @@ pub fn get_all_wasms_hashes(
 
 pub fn get_gas_checksums(working_dir: &Path) -> BTreeMap<String, u64> {
     let gas_checksums_path = working_dir.join("wasm/gas_checksums.json");
-    serde_json::from_reader(fs::File::open(gas_checksums_path).unwrap())
-        .unwrap()
+    let gas: BTreeMap<String, u64> =
+        serde_json::from_reader(fs::File::open(gas_checksums_path).unwrap())
+            .unwrap();
+
+    gas.into_iter()
+        .map(|(full_name, gas)| {
+            (
+                full_name.split('.').collect::<Vec<&str>>()[1]
+                    .to_owned()
+                    .to_lowercase(),
+                gas,
+            )
+        })
+        .collect()
 }
