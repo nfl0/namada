@@ -207,8 +207,8 @@ pub fn init_storage() -> (Address, Address) {
     (token, account)
 }
 
-pub fn prepare_client(
-) -> (ClientId, AnyClientState, HashMap<storage::Key, Vec<u8>>) {
+pub fn prepare_client()
+-> (ClientId, AnyClientState, HashMap<storage::Key, Vec<u8>>) {
     let mut writes = HashMap::new();
 
     let msg = msg_create_client();

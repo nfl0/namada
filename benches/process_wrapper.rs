@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use namada::core::types::address;
 use namada::core::types::token::{Amount, Transfer};
@@ -5,15 +7,13 @@ use namada::ledger::gas::BlockGasMeter;
 use namada::ledger::storage::TempWlStorage;
 use namada::types::chain::ChainId;
 use namada::types::time::DateTimeUtc;
-use std::collections::BTreeMap;
-
 use namada::types::transaction::{Fee, WrapperTx};
 use namada_apps::node::ledger::shell::process_proposal::ValidationMeta;
 use namada_apps::wallet::defaults;
 use namada_benches::{generate_tx, BenchShell, TX_TRANSFER_WASM};
 
 fn process_tx(c: &mut Criterion) {
-    let shell = BenchShell::new();
+    let shell = BenchShell::default();
     let tx = generate_tx(
         TX_TRANSFER_WASM,
         Transfer {

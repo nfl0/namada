@@ -2531,7 +2531,6 @@ fn ledger_many_txs_in_a_block() -> Result<()> {
         "--gas-limit",
         "100",
         "--node",
-        &validator_one_rpc,
     ]);
 
     // 2. Spawn threads each submitting token transfer tx

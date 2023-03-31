@@ -144,6 +144,7 @@ where
 }
 
 /// Execute a transaction code. Returns verifiers requested by the transaction.
+#[allow(clippy::too_many_arguments)]
 fn execute_tx<D, H, CA>(
     tx: &Tx,
     tx_index: &TxIndex,
@@ -285,8 +286,10 @@ where
                         vp_hash.as_str(),
                     )?;
 
-                    // NOTE: because of the whitelisted gas and the gas metering for the exposed vm env functions,
-                    //    the first signature verification (if any) is accounted twice
+                    // NOTE: because of the whitelisted gas and the gas metering
+                    // for the exposed vm env functions,
+                    //    the first signature verification (if any) is accounted
+                    // twice
                     wasm::run::vp(
                         vp,
                         tx,

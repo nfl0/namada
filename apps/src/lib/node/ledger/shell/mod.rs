@@ -42,14 +42,13 @@ use namada::types::internal::WrapperTxInQueue;
 use namada::types::key::*;
 use namada::types::storage::{BlockHeight, Key, TxIndex};
 use namada::types::time::{DateTimeUtc, TimeZone, Utc};
-use namada::types::token;
 #[cfg(not(feature = "mainnet"))]
 use namada::types::transaction::MIN_FEE;
 use namada::types::transaction::{
     hash_tx, process_tx, verify_decrypted_correctly, AffineCurve, DecryptedTx,
     EllipticCurve, PairingEngine, TxType,
 };
-use namada::types::{address, hash};
+use namada::types::{address, hash, token};
 use namada::vm::wasm::{TxCache, VpCache};
 use namada::vm::WasmCacheRwAccess;
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -710,7 +709,7 @@ where
         if let TxType::Wrapper(wrapper) = tx_type {
             // Tx gas limit
             let mut gas_meter = TxGasMeter::new(u64::from(&wrapper.gas_limit));
-            if let Err(_) = gas_meter.add_tx_size_gas(tx_bytes.len()) {
+            if gas_meter.add_tx_size_gas(tx_bytes.len()).is_err() {
                 response.code = ErrorCodes::TxGasLimit.into();
                 response.log =
                     "Wrapper transactions exceeds its gas limit".to_string();
@@ -724,11 +723,11 @@ where
                 .expect("Error while reading from storage")
                 .expect("Missing max_block_gas parameter in storage");
             let mut block_gas_meter = BlockGasMeter::new(block_gas_limit);
-            if let Err(_) = block_gas_meter.finalize_transaction(gas_meter) {
+            if block_gas_meter.finalize_transaction(gas_meter).is_err() {
                 response.code = ErrorCodes::BlockGasLimit.into();
-                response.log =
-                    "Wrapper transaction exceeds the maximum block gas limit"
-                        .to_string();
+                response.log = "Wrapper transaction exceeds the maximum block \
+                                gas limit"
+                    .to_string();
                 return response;
             }
 
@@ -1113,8 +1112,8 @@ mod test_utils {
         }
 
         /// Add a wrapper tx to the queue of txs to be decrypted
-        /// in the current block proposal. Takes the length of the encoded wrapper
-        /// as parameter.
+        /// in the current block proposal. Takes the length of the encoded
+        /// wrapper as parameter.
         #[cfg(test)]
         pub fn enqueue_tx(&mut self, wrapper: WrapperTx, inner_tx_gas: u64) {
             self.shell
