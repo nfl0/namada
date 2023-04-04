@@ -5,7 +5,9 @@ use masp_primitives::sapling::Node;
 use masp_primitives::transaction::components::Amount;
 use namada::tendermint_rpc::HttpClient;
 use namada::types::address::Address;
-use namada::types::masp::{TransferSource, TransferTarget};
+use namada::types::masp::{
+    ExtendedSpendingKey, TransferSource, TransferTarget,
+};
 use namada::types::storage::Epoch;
 use namada::types::transaction::GasLimit;
 use namada::types::{key, token};
@@ -34,6 +36,8 @@ pub struct ParsedTxArgs {
     pub fee_amount: token::Amount,
     /// The token in which the fee is being paid
     pub fee_token: Address,
+    /// The optional spending key to be used for fee unshielding
+    pub fee_unshield: Option<ExtendedSpendingKey>,
     /// The max amount of gas used to process tx
     pub gas_limit: GasLimit,
     /// Sign the tx with the key for the given alias from your wallet
