@@ -13,7 +13,7 @@ It is not a goal of this page to explain the details of `git` that can be found 
 
 ## The official branches
 
-- `latest`: a convenience branch which always points to the latest
+- `base`: a convenience branch which always points to the latest
   *minor* release (i.e., `vX.Y.0`). This is suitable for making the
   front page on web views (not Github, however, which inexplicably
   couples the front page with the default pull request target). Nothing
@@ -320,7 +320,7 @@ The example history is:
 
 ```
 % git log --graph --abbrev-commit
-* commit cccfb78 (HEAD, tag: v0.1.0, release, latest, draft)
+* commit cccfb78 (HEAD, tag: v0.1.0, release, base, draft)
 | Author: Alice <alice@example.com>
 | Date:   Thu May 12 14:40:37 2022 -0400
 |
@@ -452,7 +452,7 @@ After the conflict is fixed, `draft` looks like this:
 |/|
 | * 2f54b40 (alice/map-two-megabytes) main: mmap two megabytes
 |/
-* cccfb78 (tag: v0.1.0, release, latest) version 0.1.0
+* cccfb78 (tag: v0.1.0, release, base) version 0.1.0
 * 291d127 prehistory
 ```
 
@@ -563,7 +563,7 @@ The final history of `release` looks like this:
 |/|
 | * c39987c (bob/macro-memory-units) main: use macros for memory size units
 |/
-* cccfb78 (tag: v0.1.0, latest) version 0.1.0
+* cccfb78 (tag: v0.1.0, base) version 0.1.0
 * 291d127 prehistory
 ```
 
