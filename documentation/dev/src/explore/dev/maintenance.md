@@ -65,9 +65,9 @@ release is `v1.7.0`, and 30 topics have been merged to `release` (i.e.,
 added to the upcoming `v1.8.0`), the ordinary base point for a new topic
 (assuming no other considerations, discussed below, apply) is `v1.7.0`.
 
-For convenience, we should keep a branch pointer called `latest` pointed
+For convenience, we should keep a branch pointer called `base` pointed
 at the most recent `vX.Y.0` release tag, using this as the default view
-on e.g. Github. Pull requests could be opened against `latest`, but this
+on e.g. Github. Pull requests could be opened against `base`, but this
 would cause milestones to show as 0 perpetually; making them against
 `release` preserves the useful issue tracker features.
 
