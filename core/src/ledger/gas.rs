@@ -152,8 +152,8 @@ impl TxGasMeter {
     }
 
     /// Add the gas for the space that the transaction requires in the block
-    pub fn add_tx_size_gas(&mut self, bytes_len: usize) -> Result<()> {
-        self.add(bytes_len as u64 * TX_SIZE_GAS_PER_BYTE)
+    pub fn add_tx_size_gas(&mut self, tx_bytes: &[u8]) -> Result<()> {
+        self.add(tx_bytes.len() as u64 * TX_SIZE_GAS_PER_BYTE)
     }
 
     /// Add the gas cost used in validity predicates to the current transaction.
