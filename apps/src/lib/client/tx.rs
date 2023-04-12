@@ -246,6 +246,8 @@ pub async fn submit_init_validator(
                 Some(validator_key_alias.clone()),
                 unsafe_dont_encrypt,
                 false,
+                true,
+                None,
             )
             .expect("Key generation should not fail.")
             .1
@@ -270,6 +272,8 @@ pub async fn submit_init_validator(
                     Some(consensus_key_alias.clone()),
                     unsafe_dont_encrypt,
                     false,
+                    true,
+                    None,
                 )
                 .expect("Key generation should not fail.")
                 .1

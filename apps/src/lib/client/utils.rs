@@ -479,7 +479,7 @@ pub fn init_network(
         config.address = Some(address.to_string());
 
         // Generate the consensus, account and reward keys, unless they're
-        // pre-defined. Do not use mnemonic codes.
+        // pre-defined. Do not use mnemonic code. Do not use derivation path.
         let mut wallet = Wallet::load_or_new(&chain_dir);
 
         let consensus_pk = try_parse_public_key(
@@ -495,6 +495,8 @@ pub fn init_network(
                     Some(alias),
                     unsafe_dont_encrypt,
                     false,
+                    true,
+                    None,
                 )
                 .expect("Key generation should not fail.");
 
@@ -517,6 +519,8 @@ pub fn init_network(
                     Some(alias),
                     unsafe_dont_encrypt,
                     false,
+                    true,
+                    None,
                 )
                 .expect("Key generation should not fail.");
             keypair.ref_to()
@@ -535,6 +539,8 @@ pub fn init_network(
                     Some(alias),
                     unsafe_dont_encrypt,
                     false,
+                    true,
+                    None,
                 )
                 .expect("Key generation should not fail.");
             keypair.ref_to()
@@ -585,7 +591,7 @@ pub fn init_network(
     });
 
     // Create a wallet for all accounts other than validators. Do not use
-    // mnemonic code.
+    // mnemonic code. Do not use derivation path.
     let mut wallet =
         Wallet::load_or_new(&accounts_dir.join(NET_OTHER_ACCOUNTS_DIR));
     if let Some(established) = &mut config.established {
@@ -623,6 +629,8 @@ pub fn init_network(
                         Some(name.clone()),
                         unsafe_dont_encrypt,
                         false,
+                        true,
+                        None,
                     )
                     .expect("Key generation should not fail.");
                 let public_key =
@@ -876,6 +884,8 @@ fn init_established_account(
                 Some(format!("{}-key", name.as_ref())),
                 unsafe_dont_encrypt,
                 false, // do not use mnemonic code
+                true,
+                None,
             )
             .expect("Key generation should not fail.");
         let public_key =

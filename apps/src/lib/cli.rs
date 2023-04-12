@@ -1633,6 +1633,10 @@ pub mod args {
         arg_default_from_ctx("gas-token", DefaultFn(|| "NAM".into()));
     const GENESIS_PATH: Arg<PathBuf> = arg("genesis-path");
     const GENESIS_VALIDATOR: ArgOpt<String> = arg("genesis-validator").opt();
+    const HD_WALLET_DERIVATION_PATH: Arg<String> = arg("hd-path");
+    const HD_WALLET_DERIVATION_PATH_OPT: ArgOpt<String> =
+        HD_WALLET_DERIVATION_PATH.opt();
+    const HD_WALLET_USE_EMPTY_DERIVATION_PATH: ArgFlag = flag("empty-hd-path");
     const LEDGER_ADDRESS_ABOUT: &str =
         "Address of a ledger node as \"{scheme}://{host}:{port}\". If the \
          scheme is not supplied, it is assumed to be TCP.";
@@ -3047,6 +3051,10 @@ pub mod args {
         pub alias: Option<String>,
         /// Don't encrypt the keypair
         pub unsafe_dont_encrypt: bool,
+        /// Use empty derivation path
+        pub use_empty_derivation_path: bool,
+        /// BIP44 derivation path
+        pub derivation_path: Option<String>,
     }
 
     impl Args for KeyAndAddressRestore {
@@ -3054,10 +3062,15 @@ pub mod args {
             let scheme = SCHEME.parse(matches);
             let alias = ALIAS_OPT.parse(matches);
             let unsafe_dont_encrypt = UNSAFE_DONT_ENCRYPT.parse(matches);
+            let use_empty_derivation_path =
+                HD_WALLET_USE_EMPTY_DERIVATION_PATH.parse(matches);
+            let derivation_path = HD_WALLET_DERIVATION_PATH_OPT.parse(matches);
             Self {
                 scheme,
                 alias,
                 unsafe_dont_encrypt,
+                use_empty_derivation_path,
+                derivation_path,
             }
         }
 
@@ -3075,6 +3088,18 @@ pub mod args {
                 "UNSAFE: Do not encrypt the keypair. Do not use this for keys \
                  used in a live network.",
             ))
+            .arg(
+                HD_WALLET_USE_EMPTY_DERIVATION_PATH
+                    .def()
+                    .about("Use empty HD key derivation path."),
+            )
+            .arg(HD_WALLET_DERIVATION_PATH_OPT.def().about(
+                "HD key derivation path. If none provided, a scheme default \
+                 path is used:\nThe default path for secp256k1 scheme is \
+                 m/44'/60'/0/0/0.\nThe default path for ed25519 scheme is \
+                 m/44'/877'/0'/0'/0'.\nFor secp256k1 scheme, all path indices \
+                 will be promoted to hardened indexes.",
+            ))
         }
     }
 
@@ -3087,8 +3112,12 @@ pub mod args {
         pub alias: Option<String>,
         /// Don't encrypt the keypair
         pub unsafe_dont_encrypt: bool,
-        /// Use bip39 mnemonic code
+        /// Use BIP39 mnemonic code
         pub use_mnemonic: bool,
+        /// Use empty derivation path
+        pub use_empty_derivation_path: bool,
+        /// BIP44 derivation path
+        pub derivation_path: Option<String>,
     }
 
     impl Args for KeyAndAddressGen {
@@ -3097,11 +3126,16 @@ pub mod args {
             let alias = ALIAS_OPT.parse(matches);
             let unsafe_dont_encrypt = UNSAFE_DONT_ENCRYPT.parse(matches);
             let use_mnemonic = MNEMONIC.parse(matches);
+            let use_empty_derivation_path =
+                HD_WALLET_USE_EMPTY_DERIVATION_PATH.parse(matches);
+            let derivation_path = HD_WALLET_DERIVATION_PATH_OPT.parse(matches);
             Self {
                 scheme,
                 alias,
                 unsafe_dont_encrypt,
                 use_mnemonic,
+                use_empty_derivation_path,
+                derivation_path,
             }
         }
 
@@ -3120,9 +3154,28 @@ pub mod args {
                  used in a live network.",
             ))
             .arg(MNEMONIC.def().about(
-                "Use mnemonic code for key generation. Only English wordlist \
-                 is supported.",
+                "Use BIP39 mnemonic code for key generation. Only English \
+                 wordlist is supported.",
             ))
+            .arg(
+                HD_WALLET_USE_EMPTY_DERIVATION_PATH
+                    .def()
+                    .requires(MNEMONIC.name)
+                    .about("Use empty HD key derivation path."),
+            )
+            .arg(
+                HD_WALLET_DERIVATION_PATH_OPT
+                    .def()
+                    .requires(MNEMONIC.name)
+                    .about(
+                        "HD key derivation path. If none provided, a scheme \
+                         default path is used:\nThe default path for \
+                         secp256k1 scheme is m/44'/60'/0/0/0.\nThe default \
+                         path for ed25519 scheme is m/44'/877'/0'/0'/0'.\nFor \
+                         secp256k1 scheme, all path indexes will will be \
+                         promoted to hardened indexes.",
+                    ),
+            )
         }
     }
 
