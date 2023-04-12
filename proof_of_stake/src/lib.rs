@@ -1686,7 +1686,9 @@ fn get_slashed_amount(
             // epochs before this current slash
             // TODO: understand this better (from Informal)
             if slashed_amount.epoch + params.unbonding_len < infraction_epoch {
-                updated_amount -= slashed_amount.amount;
+                updated_amount = updated_amount
+                    .checked_sub(slashed_amount.amount)
+                    .unwrap_or_default();
                 computed_to_remove.insert(ix);
             }
         }
