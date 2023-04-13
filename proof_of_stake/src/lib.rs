@@ -25,7 +25,7 @@ mod tests;
 
 use core::fmt::Debug;
 use std::cmp;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::num::TryFromIntError;
 
 use borsh::BorshDeserialize;
@@ -1664,7 +1664,7 @@ fn get_slashed_amount(
     amount: token::Amount,
     slashes: &mut Vec<Slash>,
 ) -> storage_api::Result<token::Change> {
-    println!("\nComputing slashed amount");
+    println!("\nFN `get_slashed_amount`");
     // TODO:
     // 1. consider if cubic slashing window width extends below the bond_epoch
     // 2. carefully check this logic (Informal-partnership PR 38)
@@ -1677,10 +1677,11 @@ fn get_slashed_amount(
     let mut computed_amounts = Vec::<SlashedAmount>::new();
 
     slashes.sort_by_key(|s| s.epoch);
+    println!("Num slashes: {}", slashes.len());
     for slash in slashes {
         println!("Slash epoch: {}, rate: {}", slash.epoch, slash.rate);
         let infraction_epoch = slash.epoch;
-        let mut computed_to_remove = HashSet::<usize>::new();
+        let mut computed_to_remove = BTreeSet::<usize>::new();
         for (ix, slashed_amount) in computed_amounts.iter().enumerate() {
             // Update amount with slashes that happened more than unbonding_len
             // epochs before this current slash
@@ -1692,8 +1693,8 @@ fn get_slashed_amount(
                 computed_to_remove.insert(ix);
             }
         }
-        for item in computed_to_remove {
-            computed_amounts.remove(item);
+        for item in computed_to_remove.iter().rev() {
+            computed_amounts.remove(*item);
         }
         computed_amounts.push(SlashedAmount {
             amount: decimal_mult_amount(slash.rate, updated_amount),
