@@ -3030,11 +3030,10 @@ pub mod args {
                  this transaction",
             ))
             .arg(FEE_TOKEN.def().about("The token for paying the gas"))
-            .arg(
-                FEE_UNSHIELD_SPENDING_KEY
-                    .def()
-                    .about("The spending key to be used for fee unshielding. If none is provided, fee will be payed from the unshielded balance only."),
-            )
+            .arg(FEE_UNSHIELD_SPENDING_KEY.def().about(
+                "The spending key to be used for fee unshielding. If none is \
+                 provided, fee will be payed from the unshielded balance only.",
+            ))
             .arg(GAS_LIMIT.def().about(
                 "The multiplier of the gas limit resolution definying the \
                  maximum amount of gas needed to run transaction",
