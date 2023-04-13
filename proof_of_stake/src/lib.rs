@@ -1547,14 +1547,13 @@ where
         bonds_handle.get_data_handler().iter(storage)?.collect();
 
     println!("Bonds before decrementing:");
-    for ep in Epoch::default().iter_range(params.unbonding_len * 3) {
-        println!(
-            "bond delta at epoch {}: {}",
-            ep,
-            bonds_handle
-                .get_delta_val(storage, ep, &params)?
-                .unwrap_or_default()
-        )
+    for ep in Epoch::default().iter_range(current_epoch.0 + 3) {
+        let delta = bonds_handle
+            .get_delta_val(storage, ep, &params)?
+            .unwrap_or_default();
+        if delta != 0 {
+            println!("bond ∆ at epoch {}: {}", ep, delta);
+        }
     }
 
     let mut bond_iter = bonds.into_iter().rev();
@@ -1616,6 +1615,25 @@ where
         )?;
     }
 
+    println!("Bonds after decrementing:");
+    for ep in Epoch::default().iter_range(current_epoch.0 + 3) {
+        let delta = bonds_handle
+            .get_delta_val(storage, ep, &params)?
+            .unwrap_or_default();
+        if delta != 0 {
+            println!("bond ∆ at epoch {}: {}", ep, delta);
+        }
+    }
+    let stake_at_pipeline =
+        read_validator_stake(storage, &params, validator, pipeline_epoch)?
+            .unwrap_or_default()
+            .change();
+    let token_change = if amount_after_slashing > stake_at_pipeline {
+        stake_at_pipeline
+    } else {
+        amount_after_slashing
+    };
+
     // Update the validator set at the pipeline offset. Since unbonding from a
     // jailed validator who is no longer frozen is allowed, only update the
     // validator set if the validator is not jailed
@@ -1631,7 +1649,7 @@ where
             storage,
             &params,
             validator,
-            -amount_after_slashing,
+            -token_change,
             current_epoch,
         )?;
     }
@@ -1641,14 +1659,14 @@ where
         storage,
         &params,
         validator,
-        -amount_after_slashing,
+        -token_change,
         current_epoch,
         params.pipeline_len,
     )?;
     update_total_deltas(
         storage,
         &params,
-        -amount_after_slashing,
+        -token_change,
         current_epoch,
         params.pipeline_len,
     )?;
@@ -1806,7 +1824,7 @@ pub fn withdraw_tokens<S>(
 where
     S: StorageRead + StorageWrite,
 {
-    tracing::debug!("Withdrawing tokens in epoch {current_epoch}");
+    println!("Withdrawing tokens in epoch {current_epoch}");
     let params = read_pos_params(storage)?;
     let source = source.unwrap_or(validator);
 
