@@ -3390,19 +3390,49 @@ where
         println!("Val {} at offset {} delta = {}", &validator, offset, delta);
         // Check to make sure the delta from slashing does not send the total
         // stake at any point negative
-        let stake = read_validator_stake(
+        let validator_stake_at_offset = read_validator_stake(
             storage,
             &params,
             &validator,
             current_epoch + offset,
         )?
-        .unwrap_or_default();
-        println!("Val stake at offset {} = {}", offset, u64::from(stake));
-        let change = if stake.change() + delta < token::Change::default() {
-            -stake.change()
+        .unwrap_or_default()
+        .change();
+
+        let validator_stake_at_infraction = read_validator_stake(
+            storage,
+            &params,
+            &validator,
+            infraction_epoch,
+        )?
+        .unwrap_or_default()
+        .change();
+
+        println!(
+            "Val stake at offset {} = {}",
+            offset, validator_stake_at_offset
+        );
+        let mut change =
+            if validator_stake_at_offset + delta < token::Change::default() {
+                -validator_stake_at_offset
+            } else {
+                delta
+            };
+        if total_slashed - change > validator_stake_at_infraction {
+            println!(
+                "Catching from slashing more than validator stake at \
+                 infraction"
+            );
+            change = total_slashed - validator_stake_at_infraction;
+            total_slashed -= change;
+            debug_assert_eq!(total_slashed, validator_stake_at_infraction);
+            debug_assert!(
+                validator_stake_at_offset + change >= token::Change::default()
+            );
         } else {
-            delta
+            total_slashed -= change;
         };
+
         println!("change = {}", change);
 
         update_validator_deltas(
@@ -3414,7 +3444,6 @@ where
             offset,
         )?;
         update_total_deltas(storage, &params, change, current_epoch, offset)?;
-        total_slashed -= change;
     }
     println!("Total slashed = {}", total_slashed);
 
