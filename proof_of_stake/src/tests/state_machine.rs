@@ -1,7 +1,7 @@
 //! Test PoS transitions with a state machine
 
 use std::cmp;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use itertools::Itertools;
 use namada_core::ledger::storage::testing::TestWlStorage;
@@ -56,20 +56,20 @@ struct AbstractPosState {
     genesis_validators: Vec<GenesisValidator>,
     /// Bonds delta values. The outer key for Epoch is pipeline offset from
     /// epoch in which the bond is applied
-    bonds: BTreeMap<Epoch, HashMap<BondId, token::Change>>,
+    bonds: BTreeMap<Epoch, BTreeMap<BondId, token::Change>>,
     /// Validator stakes delta values (sum of all their bonds deltas).
     /// Pipelined.
-    validator_stakes: BTreeMap<Epoch, HashMap<Address, token::Change>>,
+    validator_stakes: BTreeMap<Epoch, BTreeMap<Address, token::Change>>,
     /// Consensus validator set. Pipelined.
     consensus_set: BTreeMap<Epoch, BTreeMap<token::Amount, VecDeque<Address>>>,
     /// Below-capacity validator set. Pipelined.
     below_capacity_set:
         BTreeMap<Epoch, BTreeMap<ReverseOrdTokenAmount, VecDeque<Address>>>,
     /// Validator states. Pipelined.
-    validator_states: BTreeMap<Epoch, HashMap<Address, ValidatorState>>,
+    validator_states: BTreeMap<Epoch, BTreeMap<Address, ValidatorState>>,
     /// Unbonded bonds. The outer key for Epoch is pipeline + unbonding offset
     /// from epoch in which the unbond is applied.
-    unbonds: BTreeMap<Epoch, HashMap<BondId, token::Amount>>,
+    unbonds: BTreeMap<Epoch, BTreeMap<BondId, token::Amount>>,
     /// Validator slashes post-processing
     validator_slashes: BTreeMap<Address, Vec<Slash>>,
     /// Enqueued slashes pre-processing
@@ -2155,9 +2155,9 @@ impl AbstractPosState {
     }
 
     /// Find the sums of the bonds across all epochs
-    fn bond_sums(&self) -> HashMap<BondId, token::Change> {
+    fn bond_sums(&self) -> BTreeMap<BondId, token::Change> {
         self.bonds.iter().fold(
-            HashMap::<BondId, token::Change>::new(),
+            BTreeMap::<BondId, token::Change>::new(),
             |mut acc, (_epoch, bonds)| {
                 for (id, delta) in bonds {
                     let entry = acc.entry(id.clone()).or_default();
@@ -2173,9 +2173,9 @@ impl AbstractPosState {
     }
 
     /// Find the sums of withdrawable unbonds
-    fn withdrawable_unbonds(&self) -> HashMap<BondId, token::Amount> {
+    fn withdrawable_unbonds(&self) -> BTreeMap<BondId, token::Amount> {
         self.unbonds.iter().fold(
-            HashMap::<BondId, token::Amount>::new(),
+            BTreeMap::<BondId, token::Amount>::new(),
             |mut acc, (epoch, unbonds)| {
                 if *epoch <= self.epoch {
                     for (id, amount) in unbonds {
@@ -2352,9 +2352,9 @@ fn add_arb_bond_amount(
         .bonds
         .iter()
         .flat_map(|(_epoch, bonds)| {
-            bonds.keys().cloned().collect::<HashSet<_>>()
+            bonds.keys().cloned().collect::<BTreeSet<_>>()
         })
-        .collect::<HashSet<_>>()
+        .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
     let arb_bond_id = prop::sample::select(bond_ids);
@@ -2368,7 +2368,7 @@ fn arb_delegation(
 ) -> impl Strategy<Value = Transition> {
     // Ensure that no bond can be generated to a jailed validator
     let validators = state.consensus_set.iter().fold(
-        HashSet::new(),
+        BTreeSet::new(),
         |mut acc, (_epoch, vals)| {
             for vals in vals.values() {
                 for validator in vals {
