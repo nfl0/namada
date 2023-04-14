@@ -837,6 +837,7 @@ mod test_finalize_block {
     use namada::ledger::parameters::EpochDuration;
     use namada::ledger::storage_api;
     use namada::proof_of_stake::btree_set::BTreeSetShims;
+    use namada::proof_of_stake::parameters::PosParams;
     use namada::proof_of_stake::storage::{
         is_validator_slashes_key, slashes_prefix,
     };
@@ -845,6 +846,7 @@ mod test_finalize_block {
     };
     use namada::proof_of_stake::{
         enqueued_slashes_handle, get_num_consensus_validators,
+        read_below_capacity_validator_set_addresses_with_stake,
         read_consensus_validator_set_addresses_with_stake,
         rewards_accumulator_handle, unjail_validator,
         validator_consensus_key_handle, validator_rewards_products_handle,
@@ -1709,7 +1711,10 @@ mod test_finalize_block {
         // Finalize block 1
         next_block_for_inflation(&mut shell, pkh1.clone(), vec![], None);
 
-        let votes = get_default_true_votes(&all_pkhs, &validator_set);
+        let votes = get_default_true_votes(
+            &shell.wl_storage,
+            shell.wl_storage.storage.block.epoch,
+        );
         assert!(!votes.is_empty());
 
         // For block 2, include the evidences found for block 1.
@@ -1778,18 +1783,8 @@ mod test_finalize_block {
                 .is_empty(&shell.wl_storage)?
         );
 
-        // Get the new validator set into memory
-        let validator_set: Vec<WeightedValidator> =
-            read_consensus_validator_set_addresses_with_stake(
-                &shell.wl_storage,
-                Epoch::default(),
-            )
-            .unwrap()
-            .into_iter()
-            .collect();
-
         // Advance to the processing epoch
-        let votes = get_default_true_votes(&behaving_pkhs, &validator_set);
+        let votes = get_default_true_votes(&shell.wl_storage, Epoch::default());
         loop {
             next_block_for_inflation(
                 &mut shell,
@@ -1984,22 +1979,312 @@ mod test_finalize_block {
         Ok(())
     }
 
-    fn get_default_true_votes(
-        addresses: &Vec<Vec<u8>>,
-        powers: &Vec<WeightedValidator>,
-    ) -> Vec<VoteInfo> {
-        let mut votes = vec![];
-        if addresses.len() == powers.len() {
-            for i in 0..addresses.len() {
-                votes.push(VoteInfo {
-                    validator: Some(Validator {
-                        address: addresses[i].clone(),
-                        power: powers[i].bonded_stake.change() as i64,
-                    }),
-                    signed_last_block: true,
-                })
+    #[test]
+    fn test_multiple_misbehaviors() -> storage_api::Result<()> {
+        let num_validators = 7_u64;
+        let (mut shell, _) = setup(num_validators);
+        let mut params = read_pos_params(&shell.wl_storage).unwrap();
+        params.unbonding_len = 4;
+        params.max_validator_slots = 4;
+        write_pos_params(&mut shell.wl_storage, params.clone())?;
+
+        let consensus_set: Vec<WeightedValidator> =
+            read_consensus_validator_set_addresses_with_stake(
+                &shell.wl_storage,
+                Epoch::default(),
+            )
+            .unwrap()
+            .into_iter()
+            .collect();
+
+        let bc_set: Vec<WeightedValidator> =
+            read_below_capacity_validator_set_addresses_with_stake(
+                &shell.wl_storage,
+                Epoch::default(),
+            )
+            .unwrap()
+            .into_iter()
+            .collect();
+
+        let validator_set: Vec<WeightedValidator> = consensus_set
+            .iter()
+            .cloned()
+            .chain(bc_set.iter().cloned())
+            .collect();
+
+        let val1 = consensus_set[0].clone();
+        // let _val2 = consensus_set[1].clone();
+        // let _val3 = consensus_set[2].clone();
+        // let _val4 = consensus_set[3].clone();
+        // let _val5 = bc_set[4].clone();
+        // let _val6 = bc_set[5].clone();
+        // let _val7 = bc_set[6].clone();
+
+        // let initial_stake = val1.bonded_stake;
+        // let total_initial_stake = num_validators * initial_stake;
+
+        // let get_pkh = |address, epoch| {
+        //     let ck = validator_consensus_key_handle(&address)
+        //         .get(&shell.wl_storage, epoch, &params)
+        //         .unwrap()
+        //         .unwrap();
+        //     let hash_string = tm_consensus_key_raw_hash(&ck);
+        //     HEXUPPER.decode(hash_string.as_bytes()).unwrap()
+        // };
+
+        let mut all_pkhs: Vec<Vec<u8>> = Vec::new();
+        let mut behaving_pkhs: Vec<Vec<u8>> = Vec::new();
+        for (idx, validator) in validator_set.iter().enumerate() {
+            assert_eq!(
+                validator_state_handle(&validator.address)
+                    .get(&shell.wl_storage, Epoch::default(), &params)
+                    .unwrap(),
+                Some(ValidatorState::Consensus)
+            );
+            all_pkhs.push(get_pkh_from_address(
+                &shell.wl_storage,
+                &params,
+                validator.address.clone(),
+                Epoch::default(),
+            ));
+            if idx > 1_usize {
+                behaving_pkhs.push(get_pkh_from_address(
+                    &shell.wl_storage,
+                    &params,
+                    validator.address.clone(),
+                    Epoch::default(),
+                ));
             }
         }
-        votes
+
+        let pkh1 = all_pkhs[0].clone();
+
+        // Finalize block 1
+        next_block_for_inflation(&mut shell, pkh1.clone(), vec![], None);
+
+        let votes = get_default_true_votes(&shell.wl_storage, Epoch::default());
+        assert!(!votes.is_empty());
+
+        // Advance to epoch 1
+        let votes = get_default_true_votes(&shell.wl_storage, Epoch::default());
+        let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+        assert_eq!(shell.wl_storage.storage.block.epoch.0, 1_u64);
+
+        // Make an account with balance and delegate some tokens
+        let delegator = address::testing::gen_implicit_address();
+        let del_amount = token::Amount::from(67_231);
+        let staking_token = shell.wl_storage.storage.native_token.clone();
+        credit_tokens(
+            &mut shell.wl_storage,
+            &staking_token,
+            &delegator,
+            token::Amount::from(200_000),
+        )
+        .unwrap();
+        namada_proof_of_stake::bond_tokens(
+            &mut shell.wl_storage,
+            Some(&delegator),
+            &val1.address,
+            del_amount,
+            current_epoch,
+        )
+        .unwrap();
+        // Self-unbond
+        let unbond_amount = token::Amount::from(34_654);
+        namada_proof_of_stake::unbond_tokens(
+            &mut shell.wl_storage,
+            None,
+            &val1.address,
+            unbond_amount,
+            current_epoch,
+        )
+        .unwrap();
+
+        // Advance to epoch 2 and unbond from delegation
+        let votes = get_default_true_votes(
+            &shell.wl_storage,
+            shell.wl_storage.storage.block.epoch,
+        );
+        let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+        namada_proof_of_stake::unbond_tokens(
+            &mut shell.wl_storage,
+            Some(&delegator),
+            &val1.address,
+            token::Amount::from(17_999),
+            current_epoch,
+        )
+        .unwrap();
+
+        // Advance to epoch 3 and self-bond
+        let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+        let self_bond_amount = token::Amount::from(18_123);
+        namada_proof_of_stake::bond_tokens(
+            &mut shell.wl_storage,
+            None,
+            &val1.address,
+            self_bond_amount,
+            current_epoch,
+        )
+        .unwrap();
+
+        // Advance to epoch 5
+        for _ in 0..2 {
+            let _ = advance_epoch(&mut shell, &pkh1, &votes, None);
+        }
+        let current_epoch = shell.wl_storage.storage.block.epoch;
+
+        // Delegate
+        let del_amount_2 = token::Amount::from(14_144);
+        namada_proof_of_stake::bond_tokens(
+            &mut shell.wl_storage,
+            Some(&delegator),
+            &val1.address,
+            del_amount_2,
+            current_epoch,
+        )
+        .unwrap();
+
+        // Advance to epoch 6
+        let _current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+
+        // Discover a misbehavior committed in epoch 3
+        // NOTE: Only the type, height, and validator address fields from the
+        // Misbehavior struct are used in Namada
+        let height = shell
+            .wl_storage
+            .storage
+            .block
+            .pred_epochs
+            .first_block_heights[3];
+        let misbehaviors = vec![Misbehavior {
+            r#type: 1,
+            validator: Some(Validator {
+                address: pkh1.clone(),
+                power: Default::default(),
+            }),
+            height: height.0 as i64,
+            time: Default::default(),
+            total_voting_power: Default::default(),
+        }];
+        next_block_for_inflation(
+            &mut shell,
+            pkh1.clone(),
+            votes.clone(),
+            Some(misbehaviors),
+        );
+
+        // Advance to epoch 7
+        let _current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+
+        // Discover two more misbehaviors, one committed in epoch 3, one in
+        // epoch 4
+        let height4 = shell
+            .wl_storage
+            .storage
+            .block
+            .pred_epochs
+            .first_block_heights[4];
+        let misbehaviors = vec![
+            Misbehavior {
+                r#type: 1,
+                validator: Some(Validator {
+                    address: pkh1.clone(),
+                    power: Default::default(),
+                }),
+                height: height.0 as i64,
+                time: Default::default(),
+                total_voting_power: Default::default(),
+            },
+            Misbehavior {
+                r#type: 2,
+                validator: Some(Validator {
+                    address: pkh1.clone(),
+                    power: Default::default(),
+                }),
+                height: height4.0 as i64,
+                time: Default::default(),
+                total_voting_power: Default::default(),
+            },
+        ];
+        next_block_for_inflation(
+            &mut shell,
+            pkh1.clone(),
+            votes.clone(),
+            Some(misbehaviors),
+        );
+
+        // Advance to epoch 8, where the infractions committed in epoch 3 will
+        // be processed
+        let _current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+
+        // Advance to epoch 9, where the infractions committed in epoch 4 will
+        // be processed
+        let _current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+
+        Ok(())
+    }
+
+    fn get_default_true_votes<S>(storage: &S, epoch: Epoch) -> Vec<VoteInfo>
+    where
+        S: StorageRead,
+    {
+        let params = read_pos_params(storage).unwrap();
+        read_consensus_validator_set_addresses_with_stake(storage, epoch)
+            .unwrap()
+            .into_iter()
+            .map(|val| {
+                let pkh = get_pkh_from_address(
+                    storage,
+                    &params,
+                    val.address.clone(),
+                    epoch,
+                );
+                VoteInfo {
+                    validator: Some(Validator {
+                        address: pkh,
+                        power: u64::from(val.bonded_stake) as i64,
+                    }),
+                    signed_last_block: true,
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn advance_epoch(
+        shell: &mut TestShell,
+        proposer_address: &[u8],
+        consensus_votes: &[VoteInfo],
+        misbehaviors: Option<Vec<Misbehavior>>,
+    ) -> Epoch {
+        let current_epoch = shell.wl_storage.storage.block.epoch;
+        loop {
+            next_block_for_inflation(
+                shell,
+                proposer_address.to_owned(),
+                consensus_votes.to_owned(),
+                misbehaviors.clone(),
+            );
+            if shell.wl_storage.storage.block.epoch == current_epoch.next() {
+                break;
+            }
+        }
+        shell.wl_storage.storage.block.epoch
+    }
+
+    fn get_pkh_from_address<S>(
+        storage: &S,
+        params: &PosParams,
+        address: Address,
+        epoch: Epoch,
+    ) -> Vec<u8>
+    where
+        S: StorageRead,
+    {
+        let ck = validator_consensus_key_handle(&address)
+            .get(storage, epoch, params)
+            .unwrap()
+            .unwrap();
+        let hash_string = tm_consensus_key_raw_hash(&ck);
+        HEXUPPER.decode(hash_string.as_bytes()).unwrap()
     }
 }
