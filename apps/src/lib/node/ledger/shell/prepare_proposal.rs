@@ -16,7 +16,7 @@ use namada::types::transaction::{AffineCurve, DecryptedTx, EllipticCurve};
 
 use super::super::*;
 #[allow(unused_imports)]
-use super::block_space_alloc;
+pub use super::block_space_alloc;
 use super::block_space_alloc::states::{
     BuildingDecryptedTxBatch, BuildingProtocolTxBatch,
     EncryptedTxBatchAllocator, NextState, TryAlloc,

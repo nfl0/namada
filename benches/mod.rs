@@ -1,4 +1,4 @@
-//! Benchmarks module based on [`criterion`].
+//! Benchmarks module based on criterion.
 //!
 //! Measurements are taken on the elapsed wall-time.
 //!

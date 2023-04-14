@@ -85,8 +85,8 @@ pub trait TryAlloc {
 /// Represents a state transition in the [`BlockSpaceAllocator`] state machine.
 ///
 /// This trait should not be used directly. Instead, consider using one of
-/// [`NextState`], [`NextStateWithEncryptedTxs`] or
-/// [`NextStateWithoutEncryptedTxs`].
+/// [`NextState`], [`WithEncryptedTxs`] or
+/// [`WithoutEncryptedTxs`].
 ///
 /// For more info, read the module docs of
 /// [`crate::node::ledger::shell::prepare_proposal::block_space_alloc::states`].
