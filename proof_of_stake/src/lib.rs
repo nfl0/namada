@@ -24,7 +24,7 @@ pub mod types;
 mod tests;
 
 use core::fmt::Debug;
-use std::cmp;
+use std::cmp::{self, Reverse};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::num::TryFromIntError;
 
@@ -1699,7 +1699,7 @@ fn get_slashed_amount(
     for slash in slashes {
         println!("Slash epoch: {}, rate: {}", slash.epoch, slash.rate);
         let infraction_epoch = slash.epoch;
-        let mut computed_to_remove = BTreeSet::<usize>::new();
+        let mut computed_to_remove = BTreeSet::<Reverse<usize>>::new();
         for (ix, slashed_amount) in computed_amounts.iter().enumerate() {
             // Update amount with slashes that happened more than unbonding_len
             // epochs before this current slash
@@ -1708,11 +1708,14 @@ fn get_slashed_amount(
                 updated_amount = updated_amount
                     .checked_sub(slashed_amount.amount)
                     .unwrap_or_default();
-                computed_to_remove.insert(ix);
+                computed_to_remove.insert(Reverse(ix));
             }
         }
-        for item in computed_to_remove.iter().rev() {
-            computed_amounts.remove(*item);
+        // Invariant: `computed_to_remove` must be in reverse ord to avoid
+        // left-shift of the `computed_amounts` after call to `remove`
+        // invalidating the rest of the indices.
+        for item in computed_to_remove {
+            computed_amounts.remove(item.0);
         }
         computed_amounts.push(SlashedAmount {
             amount: decimal_mult_amount(slash.rate, updated_amount),
