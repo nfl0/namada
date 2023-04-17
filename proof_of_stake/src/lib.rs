@@ -1518,7 +1518,6 @@ where
     let bonds_handle = bond_handle(source, validator);
 
     // Make sure there are enough tokens left in the bond at the pipeline offset
-    // TODO: does `remaining_at_pipeline` need to account for slashes?
     let remaining_at_pipeline = bonds_handle
         .get_sum(storage, pipeline_epoch, &params)?
         .unwrap_or_default();
@@ -1628,11 +1627,7 @@ where
         read_validator_stake(storage, &params, validator, pipeline_epoch)?
             .unwrap_or_default()
             .change();
-    let token_change = if amount_after_slashing > stake_at_pipeline {
-        stake_at_pipeline
-    } else {
-        amount_after_slashing
-    };
+    let token_change = cmp::min(amount_after_slashing, stake_at_pipeline);
 
     // Update the validator set at the pipeline offset. Since unbonding from a
     // jailed validator who is no longer frozen is allowed, only update the
@@ -1683,13 +1678,6 @@ fn get_slashed_amount(
     slashes: &mut Vec<Slash>,
 ) -> storage_api::Result<token::Change> {
     println!("\nFN `get_slashed_amount`");
-    // TODO:
-    // 1. consider if cubic slashing window width extends below the bond_epoch
-    // 2. carefully check this logic (Informal-partnership PR 38)
-    // 3. Should `computed_amounts` consider > 1 identical instances of a
-    // `SlashedAmount`?
-    //   - I think yes, otherwise we have a problem for collisions (done with
-    //     indices using `last_computed_ix`)
 
     let mut updated_amount = amount;
     let mut computed_amounts = Vec::<SlashedAmount>::new();
@@ -1704,6 +1692,7 @@ fn get_slashed_amount(
             // Update amount with slashes that happened more than unbonding_len
             // epochs before this current slash
             // TODO: understand this better (from Informal)
+            // TODO: do bounds of this need to be changed with a +/- 1??
             if slashed_amount.epoch + params.unbonding_len < infraction_epoch {
                 updated_amount = updated_amount
                     .checked_sub(slashed_amount.amount)
@@ -3169,7 +3158,9 @@ where
 
 /// Process slashes that have been queued up after discovery. Calculate the
 /// cubic slashing rate, store the finalized slashes, update the deltas, then
-/// transfer slashed tokens from PoS to the Slash Pool.
+/// transfer slashed tokens from PoS to the Slash Pool. This function is called
+/// at the beginning of the epoch that is `unbonding_length + 1` epochs after
+/// the infraction epoch.
 pub fn process_slashes<S>(
     storage: &mut S,
     current_epoch: Epoch,
@@ -3179,7 +3170,6 @@ where
 {
     let params = read_pos_params(storage)?;
 
-    // TODO: check if correct bounds
     if current_epoch.0 < params.unbonding_len + 1 {
         return Ok(());
     }
@@ -3197,7 +3187,7 @@ where
     let cubic_slash_rate =
         compute_cubic_slash_rate(storage, &params, infraction_epoch)?;
 
-    // Collect the slashes to be processed, updating their rates
+    // Collect the enqueued slashes and update their rates
     let mut validators_and_slashes: HashMap<Address, Vec<Slash>> =
         HashMap::new();
     for enqueued_slash in enqueued_slashes.iter(storage)? {
@@ -3370,7 +3360,6 @@ where
                 .change();
                 println!("This slash = {}", this_slash);
 
-                // TODO: should `diff_slashed_amount` be negative?
                 let diff_slashed_amount = last_slash - this_slash;
                 println!("Diff slashed amount = {}", diff_slashed_amount);
 
