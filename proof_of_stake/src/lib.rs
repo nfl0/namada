@@ -3223,7 +3223,8 @@ where
     }
 
     // let mut total_slashed = token::Change::default();
-    let mut deltas_for_update: Vec<(Address, u64, token::Change)> = Vec::new();
+    let mut deltas_for_update: HashMap<Address, Vec<(u64, token::Change)>> =
+        HashMap::new();
 
     // Store the final processed slashes to their corresponding validators, then
     // update the deltas
@@ -3363,11 +3364,10 @@ where
                 let diff_slashed_amount = last_slash - this_slash;
                 println!("Diff slashed amount = {}", diff_slashed_amount);
 
-                deltas_for_update.push((
-                    validator.clone(),
-                    offset,
-                    diff_slashed_amount,
-                ));
+                deltas_for_update
+                    .entry(validator.clone())
+                    .or_default()
+                    .push((offset, diff_slashed_amount));
 
                 // total_slashed -= diff_slashed_amount;
                 last_slash = this_slash;
@@ -3378,64 +3378,78 @@ where
     println!("\nUpdating deltas");
     // Update the deltas in storage
     let mut total_slashed = token::Change::default();
-    for (validator, offset, delta) in deltas_for_update {
-        println!("Val {} at offset {} delta = {}", &validator, offset, delta);
-        // Check to make sure the delta from slashing does not send the total
-        // stake at any point negative
-        let validator_stake_at_offset = read_validator_stake(
-            storage,
-            &params,
-            &validator,
-            current_epoch + offset,
-        )?
-        .unwrap_or_default()
-        .change();
+    for (validator, info) in deltas_for_update {
+        println!("Val {}", &validator);
+        let mut total_slashed_val = token::Change::default();
+        for (offset, delta) in info {
+            // Check to make sure the delta from slashing does not send the
+            // total stake at any point negative
+            let validator_stake_at_offset = read_validator_stake(
+                storage,
+                &params,
+                &validator,
+                current_epoch + offset,
+            )?
+            .unwrap_or_default()
+            .change();
 
-        let validator_stake_at_infraction = read_validator_stake(
-            storage,
-            &params,
-            &validator,
-            infraction_epoch,
-        )?
-        .unwrap_or_default()
-        .change();
+            let validator_stake_at_infraction = read_validator_stake(
+                storage,
+                &params,
+                &validator,
+                infraction_epoch,
+            )?
+            .unwrap_or_default()
+            .change();
 
-        println!(
-            "Val stake at offset {} = {}",
-            offset, validator_stake_at_offset
-        );
-        let mut change =
-            if validator_stake_at_offset + delta < token::Change::default() {
+            println!(
+                "Val stake at offset {} = {}",
+                offset, validator_stake_at_offset
+            );
+            let mut change = if validator_stake_at_offset + delta
+                < token::Change::default()
+            {
                 -validator_stake_at_offset
             } else {
                 delta
             };
-        if total_slashed - change > validator_stake_at_infraction {
-            println!(
-                "Catching from slashing more than validator stake at \
-                 infraction"
-            );
-            change = total_slashed - validator_stake_at_infraction;
-            total_slashed -= change;
-            debug_assert_eq!(total_slashed, validator_stake_at_infraction);
-            debug_assert!(
-                validator_stake_at_offset + change >= token::Change::default()
-            );
-        } else {
-            total_slashed -= change;
-        };
+            if total_slashed_val - change > validator_stake_at_infraction {
+                println!(
+                    "Catching from slashing more than validator stake at \
+                     infraction"
+                );
+                change = total_slashed_val - validator_stake_at_infraction;
+                total_slashed_val -= change;
+                debug_assert_eq!(
+                    total_slashed_val,
+                    validator_stake_at_infraction
+                );
+                debug_assert!(
+                    validator_stake_at_offset + change
+                        >= token::Change::default()
+                );
+            } else {
+                total_slashed_val -= change;
+            };
+            println!("change = {}", change);
 
-        println!("change = {}", change);
-
-        update_validator_deltas(
-            storage,
-            &params,
-            &validator,
-            change,
-            current_epoch,
-            offset,
-        )?;
-        update_total_deltas(storage, &params, change, current_epoch, offset)?;
+            update_validator_deltas(
+                storage,
+                &params,
+                &validator,
+                change,
+                current_epoch,
+                offset,
+            )?;
+            update_total_deltas(
+                storage,
+                &params,
+                change,
+                current_epoch,
+                offset,
+            )?;
+        }
+        total_slashed += total_slashed_val
     }
     println!("Total slashed = {}", total_slashed);
 
