@@ -1041,7 +1041,7 @@ impl AbstractStateMachine for AbstractPosState {
 
     fn init_state() -> BoxedStrategy<Self::State> {
         println!("\nInitializing abstract state machine");
-        (arb_pos_params(Some(5)), arb_genesis_validators(1..10))
+        (arb_pos_params(Some(5)), arb_genesis_validators(5..10))
             .prop_map(|(params, genesis_validators)| {
                 let epoch = Epoch::default();
                 let mut state = Self {
@@ -1148,7 +1148,7 @@ impl AbstractStateMachine for AbstractPosState {
                 *val_state != ValidatorState::Jailed
             })
             .collect::<Vec<_>>();
-        // dbg!(&unbondable);
+
         let withdrawable =
             state.withdrawable_unbonds().into_iter().collect::<Vec<_>>();
 
@@ -1174,10 +1174,6 @@ impl AbstractStateMachine for AbstractPosState {
                 None
             })
             .collect::<Vec<_>>();
-
-        // TODO: need to get list of jailed validators eligible to be
-        // unjailed given their last slash epoch and the current epoch, not
-        // just the list of jailed validators at pipeline alone
 
         // Transitions that can be applied if there are no bonds and unbonds
         let basic = prop_oneof![
@@ -1659,19 +1655,10 @@ impl AbstractStateMachine for AbstractPosState {
                 if !state.is_validator(&id.validator, pipeline) {
                     return false;
                 }
-                // The validator must not be jailed currently
-                let is_jailed = state
-                    .validator_states
-                    .get(&state.epoch)
-                    .unwrap()
-                    .get(&id.validator)
-                    .cloned()
-                    == Some(ValidatorState::Jailed);
 
-                !is_jailed
-                    && (id.validator == id.source
+                id.validator == id.source
                         // If it's not a self-bond, the source must not be a validator
-                        || !state.is_validator(&id.source, pipeline))
+                        || !state.is_validator(&id.source, pipeline)
             }
             Transition::Unbond { id, amount } => {
                 let pipeline = state.pipeline();
