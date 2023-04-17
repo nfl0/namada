@@ -1671,11 +1671,6 @@ mod test_finalize_block {
 
         let val1 = validator_set[0].clone();
         let val2 = validator_set[1].clone();
-        let _val3 = validator_set[2].clone();
-        let _val4 = validator_set[3].clone();
-        let _val5 = validator_set[4].clone();
-        let _val6 = validator_set[5].clone();
-        let _val7 = validator_set[6].clone();
 
         let initial_stake = val1.bonded_stake;
         let total_initial_stake = num_validators * initial_stake;
@@ -1692,6 +1687,7 @@ mod test_finalize_block {
         let mut all_pkhs: Vec<Vec<u8>> = Vec::new();
         let mut behaving_pkhs: Vec<Vec<u8>> = Vec::new();
         for (idx, validator) in validator_set.iter().enumerate() {
+            // Every validator should be in the consensus set
             assert_eq!(
                 validator_state_handle(&validator.address)
                     .get(&shell.wl_storage, Epoch::default(), &params)
@@ -1708,7 +1704,7 @@ mod test_finalize_block {
         let pkh1 = all_pkhs[0].clone();
         let pkh2 = all_pkhs[1].clone();
 
-        // Finalize block 1
+        // Finalize block 1 (no votes since this is the first block)
         next_block_for_inflation(&mut shell, pkh1.clone(), vec![], None);
 
         let votes = get_default_true_votes(
@@ -1716,6 +1712,7 @@ mod test_finalize_block {
             shell.wl_storage.storage.block.epoch,
         );
         assert!(!votes.is_empty());
+        assert_eq!(votes.len(), 7_usize);
 
         // For block 2, include the evidences found for block 1.
         // NOTE: Only the type, height, and validator address fields from the
@@ -1754,7 +1751,30 @@ mod test_finalize_block {
 
         // Check that the ValidatorState, enqueued slashes, and validator sets
         // are properly updated
-        for epoch in Epoch::default().iter_range(params.pipeline_len + 1) {
+        assert_eq!(
+            validator_state_handle(&val1.address)
+                .get(&shell.wl_storage, Epoch::default(), &params)
+                .unwrap(),
+            Some(ValidatorState::Consensus)
+        );
+        assert_eq!(
+            validator_state_handle(&val2.address)
+                .get(&shell.wl_storage, Epoch::default(), &params)
+                .unwrap(),
+            Some(ValidatorState::Consensus)
+        );
+        assert!(
+            enqueued_slashes_handle()
+                .at(&Epoch::default())
+                .is_empty(&shell.wl_storage)?
+        );
+        assert_eq!(
+            get_num_consensus_validators(&shell.wl_storage, Epoch::default())
+                .unwrap(),
+            7_u64
+        );
+        for epoch in Epoch::default().next().iter_range(params.pipeline_len + 1)
+        {
             assert_eq!(
                 validator_state_handle(&val1.address)
                     .get(&shell.wl_storage, epoch, &params)
@@ -1792,13 +1812,13 @@ mod test_finalize_block {
                 votes.clone(),
                 None,
             );
-            println!(
-                "Block {} epoch {}",
-                shell.wl_storage.storage.block.height,
-                shell.wl_storage.storage.block.epoch
-            );
+            // println!(
+            //     "Block {} epoch {}",
+            //     shell.wl_storage.storage.block.height,
+            //     shell.wl_storage.storage.block.epoch
+            // );
             if shell.wl_storage.storage.block.epoch == processing_epoch {
-                println!("Reached processing epoch");
+                // println!("Reached processing epoch");
                 break;
             } else {
                 assert!(
