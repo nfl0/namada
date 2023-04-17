@@ -1747,7 +1747,7 @@ mod test_finalize_block {
         );
 
         let processing_epoch =
-            shell.wl_storage.storage.block.epoch + params.unbonding_len;
+            shell.wl_storage.storage.block.epoch + params.unbonding_len + 1_u64;
 
         // Check that the ValidatorState, enqueued slashes, and validator sets
         // are properly updated
@@ -1773,8 +1773,7 @@ mod test_finalize_block {
                 .unwrap(),
             7_u64
         );
-        for epoch in Epoch::default().next().iter_range(params.pipeline_len + 1)
-        {
+        for epoch in Epoch::default().next().iter_range(params.pipeline_len) {
             assert_eq!(
                 validator_state_handle(&val1.address)
                     .get(&shell.wl_storage, epoch, &params)
