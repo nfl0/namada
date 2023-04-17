@@ -52,12 +52,12 @@ struct AbstractPosState {
     epoch: Epoch,
     /// Parameters
     params: PosParams,
-    /// Genesis validator
+    /// Genesis validators
     genesis_validators: Vec<GenesisValidator>,
     /// Bonds delta values. The outer key for Epoch is pipeline offset from
     /// epoch in which the bond is applied
-    bonds: BTreeMap<Epoch, BTreeMap<BondId, token::Change>>,
-    /// Validator stakes delta values (sum of all their bonds deltas).
+    bonds: BTreeMap<BondId, BTreeMap<Epoch, token::Change>>,
+    /// Validator stakes. These are NOT deltas.
     /// Pipelined.
     validator_stakes: BTreeMap<Epoch, BTreeMap<Address, token::Change>>,
     /// Consensus validator set. Pipelined.
@@ -1073,14 +1073,14 @@ impl AbstractStateMachine for AbstractPosState {
                     max_commission_rate_change: _,
                 } in state.genesis_validators.clone()
                 {
-                    let bonds = state.bonds.entry(epoch).or_default();
-                    bonds.insert(
-                        BondId {
+                    let bonds = state
+                        .bonds
+                        .entry(BondId {
                             source: address.clone(),
                             validator: address.clone(),
-                        },
-                        token::Change::from(tokens),
-                    );
+                        })
+                        .or_default();
+                    bonds.insert(epoch, token::Change::from(tokens));
 
                     let total_stakes =
                         state.validator_stakes.entry(epoch).or_default();
@@ -1264,6 +1264,7 @@ impl AbstractStateMachine for AbstractPosState {
                 // Copy the non-delta data into pipeline epoch from its pred.
                 state.copy_discrete_epoched_data(state.pipeline());
 
+                // Process slashes enqueued for the new epoch
                 state.process_enqueued_slashes();
 
                 // print-out the state
@@ -1315,8 +1316,17 @@ impl AbstractStateMachine for AbstractPosState {
 
                 if *amount != token::Amount::default() {
                     let change = token::Change::from(*amount);
+                    let pipeline_state = state
+                        .validator_states
+                        .get(&state.pipeline())
+                        .unwrap()
+                        .get(&id.validator)
+                        .unwrap();
+
                     // Validator sets need to be updated first!!
-                    state.update_validator_sets(&id.validator, change);
+                    if *pipeline_state != ValidatorState::Jailed {
+                        state.update_validator_sets(&id.validator, change);
+                    }
                     state.update_bond(id, change);
                     state.update_validator_total_stake(&id.validator, change);
                 }
@@ -1326,19 +1336,22 @@ impl AbstractStateMachine for AbstractPosState {
                 println!("\nABSTRACT Unbond {} tokens, id = {}", amount, id);
 
                 if *amount != token::Amount::default() {
-                    let change = -token::Change::from(*amount);
-                    // Validator sets need to be updated first!!
-                    state.update_validator_sets(&id.validator, change);
-                    state.update_bond(id, change);
-                    state.update_validator_total_stake(&id.validator, change);
+                    let change = token::Change::from(*amount);
+                    state.update_state_with_unbond(id, change);
 
-                    let withdrawal_epoch =
-                        state.pipeline() + state.params.unbonding_len;
-                    // + 1_u64;
-                    let unbonds =
-                        state.unbonds.entry(withdrawal_epoch).or_default();
-                    let unbond = unbonds.entry(id.clone()).or_default();
-                    *unbond += *amount;
+                    // Validator sets need to be updated first!!
+                    // state.update_validator_sets(&id.validator, change);
+                    // state.update_bond(id, change);
+                    // state.update_validator_total_stake(&id.validator,
+                    // change);
+
+                    // let withdrawal_epoch =
+                    //     state.pipeline() + state.params.unbonding_len;
+                    // // + 1_u64;
+                    // let unbonds =
+                    //     state.unbonds.entry(withdrawal_epoch).or_default();
+                    // let unbond = unbonds.entry(id.clone()).or_default();
+                    // *unbond += *amount;
                 }
                 state.debug_validators();
             }
@@ -1353,6 +1366,8 @@ impl AbstractStateMachine for AbstractPosState {
                 }
                 // Remove any epochs that have no unbonds left
                 state.unbonds.retain(|_epoch, unbonds| !unbonds.is_empty());
+
+                // TODO: should we do anything here for slashing?
             }
             Transition::Misbehavior {
                 address,
@@ -1802,18 +1817,94 @@ impl AbstractPosState {
         );
     }
 
-    /// Update a bond with bonded or unbonded change
+    /// Update a bond with bonded or unbonded change at the pipeline epoch
     fn update_bond(&mut self, id: &BondId, change: token::Change) {
-        let bonds = self.bonds.entry(self.pipeline()).or_default();
-        let bond = bonds.entry(id.clone()).or_default();
+        let pipeline_epoch = self.pipeline();
+        let bonds = self.bonds.entry(id.clone()).or_default();
+        let bond = bonds.entry(pipeline_epoch).or_default();
         *bond += change;
         // Remove fully unbonded entries
         if *bond == 0 {
-            bonds.remove(id);
+            bonds.remove(&pipeline_epoch);
         }
     }
 
-    /// Update validator's total stake with bonded or unbonded change
+    fn update_state_with_unbond(&mut self, id: &BondId, change: token::Change) {
+        let pipeline_epoch = self.pipeline();
+        let bonds = self.bonds.entry(id.clone()).or_default();
+        let unbond_records = self
+            .unbond_records
+            .entry(id.validator.clone())
+            .or_default()
+            .entry(pipeline_epoch)
+            .or_default();
+        let unbonds = self
+            .unbonds
+            .entry(pipeline_epoch + self.params.unbonding_len)
+            .or_default()
+            .entry(id.clone())
+            .or_default();
+        let validator_slashes = self
+            .validator_slashes
+            .get(&id.validator)
+            .cloned()
+            .unwrap_or_default();
+
+        let mut remaining = change;
+        let mut amount_after_slashing = token::Change::default();
+
+        for (bond_epoch, bond_amnt) in bonds.iter_mut().rev() {
+            println!("Bond epoch {} - amnt {}", bond_epoch, bond_amnt);
+            let to_unbond = cmp::min(*bond_amnt, remaining);
+            *bond_amnt -= to_unbond;
+            *unbonds += token::Amount::from_change(to_unbond);
+
+            let mut slashes_for_this_bond: Vec<Slash> = validator_slashes
+                .iter()
+                .cloned()
+                .filter(|s| *bond_epoch <= s.epoch)
+                .collect();
+            amount_after_slashing += compute_amount_after_slashing(
+                &mut slashes_for_this_bond,
+                token::Amount::from_change(to_unbond),
+                self.params.unbonding_len,
+            )
+            .change();
+
+            let record = UnbondRecord {
+                amount: token::Amount::from_change(to_unbond),
+                start: *bond_epoch,
+            };
+            unbond_records.push(record);
+
+            remaining -= to_unbond;
+            if remaining == 0 {
+                break;
+            }
+        }
+
+        let pipeline_state = self
+            .validator_states
+            .get(&self.pipeline())
+            .unwrap()
+            .get(&id.validator)
+            .unwrap();
+        let pipeline_stake = self
+            .validator_stakes
+            .get(&self.pipeline())
+            .unwrap()
+            .get(&id.validator)
+            .unwrap();
+        let token_change = cmp::min(*pipeline_stake, amount_after_slashing);
+
+        if *pipeline_state != ValidatorState::Jailed {
+            self.update_validator_sets(&id.validator, -token_change);
+        }
+        self.update_validator_total_stake(&id.validator, -token_change);
+    }
+
+    /// Update validator's total stake with bonded or unbonded change at the
+    /// pipeline epoch
     fn update_validator_total_stake(
         &mut self,
         validator: &Address,
@@ -2043,11 +2134,11 @@ impl AbstractPosState {
                                 .cloned()
                                 .collect::<Vec<Slash>>();
 
-                            total_unbonded += self
-                                .compute_amount_after_slashing(
-                                    &mut slashes_for_this_unbond,
-                                    record.amount,
-                                );
+                            total_unbonded += compute_amount_after_slashing(
+                                &mut slashes_for_this_unbond,
+                                record.amount,
+                                self.params.unbonding_len,
+                            );
                         }
                     }
                     let mut last_slash = token::Change::default();
@@ -2077,11 +2168,11 @@ impl AbstractPosState {
                                 .cloned()
                                 .collect::<Vec<Slash>>();
 
-                            total_unbonded += self
-                                .compute_amount_after_slashing(
-                                    &mut slashes_for_this_unbond,
-                                    record.amount,
-                                );
+                            total_unbonded += compute_amount_after_slashing(
+                                &mut slashes_for_this_unbond,
+                                record.amount,
+                                self.params.unbonding_len,
+                            );
                         }
                         let this_slash = decimal_mult_i128(
                             slash.rate,
@@ -2158,10 +2249,10 @@ impl AbstractPosState {
     fn bond_sums(&self) -> BTreeMap<BondId, token::Change> {
         self.bonds.iter().fold(
             BTreeMap::<BondId, token::Change>::new(),
-            |mut acc, (_epoch, bonds)| {
-                for (id, delta) in bonds {
+            |mut acc, (id, bonds)| {
+                for delta in bonds.values() {
                     let entry = acc.entry(id.clone()).or_default();
-                    *entry += delta;
+                    *entry += *delta;
                     // Remove entries that are fully unbonded
                     if *entry == 0 {
                         acc.remove(id);
@@ -2189,7 +2280,7 @@ impl AbstractPosState {
         )
     }
 
-    /// Conpute the cubic slashing rate for the current epoch
+    /// Compute the cubic slashing rate for the current epoch
     fn cubic_slash_rate(&self) -> Decimal {
         let window_width = self.params.cubic_slashing_window_length;
         let epoch_start = Epoch::from(
@@ -2227,43 +2318,6 @@ impl AbstractPosState {
         let vp_frac_sum = cmp::min(Decimal::ONE, vp_frac_sum);
 
         cmp::min(dec!(9) * vp_frac_sum * vp_frac_sum, Decimal::ONE)
-    }
-
-    fn compute_amount_after_slashing(
-        &self,
-        slashes: &mut Vec<Slash>,
-        amount: token::Amount,
-    ) -> token::Amount {
-        let mut computed_amounts = Vec::<SlashedAmount>::new();
-        let mut updated_amount = amount;
-        // Sort slashes by epoch
-        slashes.sort_by(|s1, s2| s1.epoch.cmp(&s2.epoch));
-
-        let mut indices_to_remove = Vec::<usize>::new();
-        let mut computed_to_add = Vec::<SlashedAmount>::new();
-        for slash in slashes {
-            for (idx, slashed_amount) in computed_amounts.iter().enumerate() {
-                if slashed_amount.epoch + self.params.unbonding_len
-                    < slash.epoch
-                {
-                    updated_amount -= slashed_amount.amount;
-                    indices_to_remove.push(idx);
-                }
-                computed_to_add.push(SlashedAmount {
-                    amount: decimal_mult_amount(slash.rate, updated_amount),
-                    epoch: slash.epoch,
-                });
-            }
-        }
-        for slashed_amount in computed_to_add.into_iter() {
-            computed_amounts.push(slashed_amount);
-        }
-        updated_amount
-            - computed_amounts
-                .iter()
-                .fold(token::Amount::default(), |sum, computed| {
-                    sum + computed.amount
-                })
     }
 
     fn debug_validators(&self) {
@@ -2350,10 +2404,8 @@ fn add_arb_bond_amount(
 ) -> impl Strategy<Value = Transition> {
     let bond_ids = state
         .bonds
-        .iter()
-        .flat_map(|(_epoch, bonds)| {
-            bonds.keys().cloned().collect::<BTreeSet<_>>()
-        })
+        .keys()
+        .cloned()
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -2437,4 +2489,52 @@ fn arb_slash(state: &AbstractPosState) -> impl Strategy<Value = Transition> {
             height: 0,
         },
     )
+}
+
+fn compute_amount_after_slashing(
+    slashes: &mut Vec<Slash>,
+    amount: token::Amount,
+    unbonding_len: u64,
+) -> token::Amount {
+    let mut computed_amounts = Vec::<SlashedAmount>::new();
+    let mut updated_amount = amount;
+    // Sort slashes by epoch
+    slashes.sort_by(|s1, s2| s1.epoch.cmp(&s2.epoch));
+
+    // let mut computed_to_add = Vec::<SlashedAmount>::new();
+    for slash in slashes {
+        let mut indices_to_remove = BTreeSet::<usize>::new();
+
+        for (idx, slashed_amount) in computed_amounts.iter().enumerate() {
+            if slashed_amount.epoch + unbonding_len < slash.epoch {
+                updated_amount = updated_amount
+                    .checked_sub(slashed_amount.amount)
+                    .unwrap_or_default();
+                indices_to_remove.insert(idx);
+            }
+            // computed_to_add.push(SlashedAmount {
+            //     amount: decimal_mult_amount(slash.rate, updated_amount),
+            //     epoch: slash.epoch,
+            // });
+        }
+        for idx in indices_to_remove.into_iter().rev() {
+            computed_amounts.remove(idx);
+        }
+        computed_amounts.push(SlashedAmount {
+            amount: decimal_mult_amount(slash.rate, updated_amount),
+            epoch: slash.epoch,
+        });
+    }
+    // for slashed_amount in computed_to_add.into_iter() {
+    //     computed_amounts.push(slashed_amount);
+    // }
+    updated_amount
+        .checked_sub(
+            computed_amounts
+                .iter()
+                .fold(token::Amount::default(), |sum, computed| {
+                    sum + computed.amount
+                }),
+        )
+        .unwrap_or_default()
 }
