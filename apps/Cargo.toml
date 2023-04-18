@@ -160,6 +160,8 @@ rust_decimal_macros = "1.26.1"
 [dev-dependencies]
 namada = {path = "../shared", default-features = false, features = ["testing", "wasm-runtime"]}
 bit-set = "0.5.2"
+hex = "0.4.3"
+base58 = "0.2.0"
 # A fork with state machime testing
 proptest = {git = "https://github.com/heliaxdev/proptest", branch = "tomas/sm"}
 tempfile = "3.2.0"
