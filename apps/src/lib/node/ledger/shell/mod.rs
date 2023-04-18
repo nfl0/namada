@@ -460,9 +460,9 @@ where
                         continue;
                     }
                 };
-                // Disregard evidences that occurred at least unbonding_len
-                // epochs before the current epoch
-                if evidence_epoch + pos_params.unbonding_len <= current_epoch {
+                // Disregard evidences that should have already been processed
+                // at this time
+                if evidence_epoch + pos_params.unbonding_len < current_epoch {
                     tracing::info!(
                         "Skipping outdated evidence from epoch \
                          {evidence_epoch}"

@@ -2032,24 +2032,9 @@ mod test_finalize_block {
             .collect();
 
         let val1 = consensus_set[0].clone();
-        // let _val2 = consensus_set[1].clone();
-        // let _val3 = consensus_set[2].clone();
-        // let _val4 = consensus_set[3].clone();
-        // let _val5 = bc_set[4].clone();
-        // let _val6 = bc_set[5].clone();
-        // let _val7 = bc_set[6].clone();
 
-        // let initial_stake = val1.bonded_stake;
-        // let total_initial_stake = num_validators * initial_stake;
-
-        // let get_pkh = |address, epoch| {
-        //     let ck = validator_consensus_key_handle(&address)
-        //         .get(&shell.wl_storage, epoch, &params)
-        //         .unwrap()
-        //         .unwrap();
-        //     let hash_string = tm_consensus_key_raw_hash(&ck);
-        //     HEXUPPER.decode(hash_string.as_bytes()).unwrap()
-        // };
+        let initial_stake = val1.bonded_stake;
+        let _total_initial_stake = num_validators * initial_stake;
 
         let mut all_pkhs: Vec<Vec<u8>> = Vec::new();
         let mut behaving_pkhs: Vec<Vec<u8>> = Vec::new();
@@ -2085,7 +2070,6 @@ mod test_finalize_block {
         assert!(!votes.is_empty());
 
         // Advance to epoch 1
-        let votes = get_default_true_votes(&shell.wl_storage, Epoch::default());
         let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
         assert_eq!(shell.wl_storage.storage.block.epoch.0, 1_u64);
 
@@ -2119,23 +2103,56 @@ mod test_finalize_block {
         )
         .unwrap();
 
+        let val_stake = namada_proof_of_stake::read_validator_stake(
+            &shell.wl_storage,
+            &params,
+            &val1.address,
+            current_epoch + params.pipeline_len,
+        )
+        .unwrap()
+        .unwrap_or_default();
+
+        assert_eq!(val_stake, initial_stake + del_amount - unbond_amount);
+
         // Advance to epoch 2 and unbond from delegation
         let votes = get_default_true_votes(
             &shell.wl_storage,
             shell.wl_storage.storage.block.epoch,
         );
         let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+        println!("\nUnbonding in epoch 2");
+        let del_unbond_amount = token::Amount::from(17_999);
         namada_proof_of_stake::unbond_tokens(
             &mut shell.wl_storage,
             Some(&delegator),
             &val1.address,
-            token::Amount::from(17_999),
+            del_unbond_amount,
             current_epoch,
         )
         .unwrap();
 
+        let val_stake = namada_proof_of_stake::read_validator_stake(
+            &shell.wl_storage,
+            &params,
+            &val1.address,
+            current_epoch + params.pipeline_len,
+        )
+        .unwrap()
+        .unwrap_or_default();
+
+        assert_eq!(
+            val_stake,
+            initial_stake + del_amount - unbond_amount - del_unbond_amount
+        );
+
         // Advance to epoch 3 and self-bond
+        let votes = get_default_true_votes(
+            &shell.wl_storage,
+            shell.wl_storage.storage.block.epoch,
+        );
         let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+        println!("\nBonding in epoch 3");
+
         let self_bond_amount = token::Amount::from(18_123);
         namada_proof_of_stake::bond_tokens(
             &mut shell.wl_storage,
@@ -2145,12 +2162,20 @@ mod test_finalize_block {
             current_epoch,
         )
         .unwrap();
+        println!("\nDone bonding");
 
         // Advance to epoch 5
         for _ in 0..2 {
+            let votes = get_default_true_votes(
+                &shell.wl_storage,
+                shell.wl_storage.storage.block.epoch,
+            );
             let _ = advance_epoch(&mut shell, &pkh1, &votes, None);
+            println!("{:?}", shell.wl_storage.storage.block.epoch);
         }
         let current_epoch = shell.wl_storage.storage.block.epoch;
+        assert_eq!(current_epoch.0, 5_u64);
+        println!("Delegating in in epoch 5");
 
         // Delegate
         let del_amount_2 = token::Amount::from(14_144);
@@ -2164,17 +2189,22 @@ mod test_finalize_block {
         .unwrap();
 
         // Advance to epoch 6
-        let _current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+        let votes = get_default_true_votes(
+            &shell.wl_storage,
+            shell.wl_storage.storage.block.epoch,
+        );
+        let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
 
         // Discover a misbehavior committed in epoch 3
         // NOTE: Only the type, height, and validator address fields from the
         // Misbehavior struct are used in Namada
+        let misbehavior_epoch = Epoch(3_u64);
         let height = shell
             .wl_storage
             .storage
             .block
             .pred_epochs
-            .first_block_heights[3];
+            .first_block_heights[misbehavior_epoch.0 as usize];
         let misbehaviors = vec![Misbehavior {
             r#type: 1,
             validator: Some(Validator {
@@ -2192,8 +2222,33 @@ mod test_finalize_block {
             Some(misbehaviors),
         );
 
+        // Assertions
+        assert_eq!(current_epoch.0, 6_u64);
+        let processing_epoch = misbehavior_epoch + params.unbonding_len + 1_u64;
+        let enqueued_slash = enqueued_slashes_handle()
+            .at(&processing_epoch)
+            .at(&val1.address)
+            .front(&shell.wl_storage)
+            .unwrap()
+            .unwrap();
+        assert_eq!(enqueued_slash.epoch, misbehavior_epoch);
+        assert_eq!(enqueued_slash.r#type, SlashType::DuplicateVote);
+        assert_eq!(enqueued_slash.rate, Decimal::ZERO);
+        let last_slash =
+            namada_proof_of_stake::read_validator_last_slash_epoch(
+                &shell.wl_storage,
+                &val1.address,
+            )
+            .unwrap();
+        assert_eq!(last_slash, Some(misbehavior_epoch));
+        assert!(
+            namada_proof_of_stake::validator_slashes_handle(&val1.address)
+                .is_empty(&shell.wl_storage)
+                .unwrap()
+        );
+
         // Advance to epoch 7
-        let _current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
+        let current_epoch = advance_epoch(&mut shell, &pkh1, &votes, None);
 
         // Discover two more misbehaviors, one committed in epoch 3, one in
         // epoch 4
@@ -2230,6 +2285,38 @@ mod test_finalize_block {
             pkh1.clone(),
             votes.clone(),
             Some(misbehaviors),
+        );
+        assert_eq!(current_epoch.0, 7_u64);
+        let enqueued_slashes_8 = enqueued_slashes_handle()
+            .at(&processing_epoch)
+            .at(&val1.address);
+        let enqueued_slashes_9 = enqueued_slashes_handle()
+            .at(&processing_epoch.next())
+            .at(&val1.address);
+
+        let es8 = enqueued_slashes_8
+            .iter(&shell.wl_storage)
+            .unwrap()
+            .collect::<Vec<_>>();
+        let es9 = enqueued_slashes_9
+            .iter(&shell.wl_storage)
+            .unwrap()
+            .collect::<Vec<_>>();
+        dbg!(&es8, &es9);
+
+        assert_eq!(enqueued_slashes_8.len(&shell.wl_storage).unwrap(), 2_u64);
+        assert_eq!(enqueued_slashes_9.len(&shell.wl_storage).unwrap(), 1_u64);
+        let last_slash =
+            namada_proof_of_stake::read_validator_last_slash_epoch(
+                &shell.wl_storage,
+                &val1.address,
+            )
+            .unwrap();
+        assert_eq!(last_slash, Some(Epoch(4)));
+        assert!(
+            namada_proof_of_stake::validator_slashes_handle(&val1.address)
+                .is_empty(&shell.wl_storage)
+                .unwrap()
         );
 
         // Advance to epoch 8, where the infractions committed in epoch 3 will
