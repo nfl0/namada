@@ -244,10 +244,8 @@ pub async fn submit_init_validator(
             .gen_key(
                 scheme,
                 Some(validator_key_alias.clone()),
-                unsafe_dont_encrypt,
-                false,
-                true,
                 None,
+                unsafe_dont_encrypt,
             )
             .expect("Key generation should not fail.")
             .1
@@ -270,10 +268,8 @@ pub async fn submit_init_validator(
                     // Note that TM only allows ed25519 for consensus key
                     SchemeType::Ed25519,
                     Some(consensus_key_alias.clone()),
-                    unsafe_dont_encrypt,
-                    false,
-                    true,
                     None,
+                    unsafe_dont_encrypt,
                 )
                 .expect("Key generation should not fail.")
                 .1
