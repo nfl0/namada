@@ -269,9 +269,8 @@ pub mod genesis_config {
         pub pos_gain_p: Decimal,
         /// PoS gain d
         pub pos_gain_d: Decimal,
-        #[cfg(not(feature = "mainnet"))]
-        /// Fix wrapper tx fees
-        pub wrapper_tx_fees: Option<token::Amount>,
+        /// Map of the cost per gas unit for every token allowed for fee payment
+        pub gas_cost: BTreeMap<Address, token::Amount>,
         /// Gas table
         pub gas_table: Option<BTreeMap<String, u64>>,
     }
@@ -622,7 +621,7 @@ pub mod genesis_config {
             pos_gain_d: parameters.pos_gain_d,
             staked_ratio: Decimal::ZERO,
             pos_inflation_amount: 0,
-            wrapper_tx_fees: parameters.wrapper_tx_fees,
+            gas_cost: parameters.gas_cost,
             gas_table: parameters.gas_table.unwrap_or_default(),
         };
 
@@ -887,9 +886,8 @@ pub struct Parameters {
     pub staked_ratio: Decimal,
     /// PoS inflation amount from the last epoch (read + write for every epoch)
     pub pos_inflation_amount: u64,
-    /// Fixed Wrapper tx fees
-    #[cfg(not(feature = "mainnet"))]
-    pub wrapper_tx_fees: Option<token::Amount>,
+    /// Map of the cost per gas unit for every token allowed for fee payment
+    pub gas_cost: BTreeMap<Address, token::Amount>,
     /// Gas table
     pub gas_table: BTreeMap<String, u64>,
 }
@@ -989,7 +987,7 @@ pub fn genesis(num_validators: u64) -> Genesis {
         pos_gain_d: dec!(0.1),
         staked_ratio: dec!(0.0),
         pos_inflation_amount: 0,
-        wrapper_tx_fees: Some(token::Amount::whole(100)),
+        gas_cost: [(nam(), token::Amount::from(1))].into_iter().collect(),
         gas_table: BTreeMap::default(),
     };
     let albert = EstablishedAccount {

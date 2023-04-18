@@ -1085,8 +1085,7 @@ mod tests {
                 pos_inflation_amount: 0,
                 #[cfg(not(feature = "mainnet"))]
                 faucet_account: None,
-                #[cfg(not(feature = "mainnet"))]
-                wrapper_tx_fees: None,
+                gas_cost: BTreeMap::default(),
                 gas_table: BTreeMap::default()
             };
             parameters.init_storage(&mut wl_storage).unwrap();

@@ -89,7 +89,7 @@ where
             pos_gain_d,
             staked_ratio,
             pos_inflation_amount,
-            wrapper_tx_fees,
+            gas_cost,
             gas_table,
         } = genesis.parameters;
         // borrow necessary for release build, annoys clippy on dev build
@@ -146,8 +146,7 @@ where
             pos_inflation_amount,
             #[cfg(not(feature = "mainnet"))]
             faucet_account,
-            #[cfg(not(feature = "mainnet"))]
-            wrapper_tx_fees,
+            gas_cost,
             gas_table,
         };
         parameters
