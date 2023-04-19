@@ -1145,21 +1145,9 @@ impl AbstractStateMachine for AbstractPosState {
             .boxed()
     }
 
-    // TODO: allow bonding to jailed val
     fn transitions(state: &Self::State) -> BoxedStrategy<Self::Transition> {
-        let unbondable = state
-            .bond_sums()
-            .into_iter()
-            .filter(|(bond_id, _)| {
-                let val_state = state
-                    .validator_states
-                    .get(&state.epoch)
-                    .unwrap()
-                    .get(&bond_id.validator)
-                    .unwrap();
-                *val_state != ValidatorState::Jailed
-            })
-            .collect::<Vec<_>>();
+        // Let preconditions filter out what unbonds are not allowed
+        let unbondable = state.bond_sums().into_iter().collect::<Vec<_>>();
 
         let withdrawable =
             state.withdrawable_unbonds().into_iter().collect::<Vec<_>>();
@@ -1702,6 +1690,11 @@ impl AbstractStateMachine for AbstractPosState {
                 } else {
                     false
                 };
+
+                println!(
+                    "\nVALIDATOR {} IS FROZEN - CANNOT UNBOND\n",
+                    &id.validator
+                );
 
                 // The validator must be known
                 state.is_validator(&id.validator, pipeline)
@@ -2431,27 +2424,14 @@ fn add_arb_bond_amount(
 fn arb_delegation(
     state: &AbstractPosState,
 ) -> impl Strategy<Value = Transition> {
-    // Ensure that no bond can be generated to a jailed validator
-    let validators = state.consensus_set.iter().fold(
-        BTreeSet::new(),
-        |mut acc, (_epoch, vals)| {
-            for vals in vals.values() {
-                for validator in vals {
-                    if *state
-                        .validator_states
-                        .get(&state.epoch)
-                        .unwrap()
-                        .get(validator)
-                        .unwrap()
-                        != ValidatorState::Jailed
-                    {
-                        acc.insert(validator.clone());
-                    }
-                }
-            }
-            acc
-        },
-    );
+    // Bond is allowed to any validator in any set - including jailed validators
+    let validators = state
+        .validator_states
+        .get(&state.pipeline())
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
     let validator_vec = validators.clone().into_iter().collect::<Vec<_>>();
     let arb_source = address::testing::arb_non_internal_address()
         .prop_filter("Must be a non-validator address", move |addr| {
