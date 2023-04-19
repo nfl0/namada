@@ -3372,7 +3372,9 @@ where
 
                 let this_slash = decimal_mult_amount(
                     enqueued_slash.rate,
-                    validator_stake_at_infraction - total_unbonded,
+                    validator_stake_at_infraction
+                        .checked_sub(total_unbonded)
+                        .unwrap_or_default(),
                 )
                 .change();
                 println!("This slash = {}", this_slash);

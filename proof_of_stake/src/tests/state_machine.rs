@@ -1015,33 +1015,6 @@ impl ConcretePosState {
                     assert!(!vals.contains(&val));
                 }
             }
-
-            // let prefix = Key::from(crate::ADDRESS.to_db_key())
-            //     .push(&crate::storage::VALIDATOR_STORAGE_PREFIX.to_owned())
-            //     .expect("Cannot obtain a storage key");
-            // for iter in
-            //     storage_api::iter_prefix_bytes(&self.s, &prefix).unwrap()
-            // {
-            //     let (key, bytes) = iter.unwrap();
-            //     if let Some((address, i_epoch)) =
-            //         crate::storage::is_validator_state_key(&key)
-            //     {
-            //         println!(
-            //             "-------- address: {}, i_epoch: {}",
-            //             address, i_epoch
-            //         );
-            //         if epoch != i_epoch {
-            //             continue;
-            //         }
-            //         let state: ValidatorState =
-            //
-            // BorshDeserialize::try_from_slice(&bytes).ok().unwrap();
-            //         if state == ValidatorState::Jailed {
-            //             println!("Jailed val {}, epoch {}", address,
-            // i_epoch);
-            // assert!(!vals.contains(address));         }
-            //     }
-            // }
         }
         // TODO: expand this to include jailed validators
     }
@@ -1940,11 +1913,12 @@ impl AbstractPosState {
 
         let state = validator_states.get(validator).unwrap();
 
-        let this_val_stake_pre = *validator_stakes.get(validator).unwrap();
+        let this_val_stake_pre =
+            validator_stakes.get(validator).cloned().unwrap_or_default();
         let this_val_stake_post =
             token::Amount::from_change(this_val_stake_pre + change);
         let this_val_stake_pre = token::Amount::from_change(
-            *validator_stakes.get(validator).unwrap(),
+            validator_stakes.get(validator).cloned().unwrap_or_default(),
         );
 
         match state {
@@ -2258,10 +2232,10 @@ impl AbstractPosState {
                 for delta in bonds.values() {
                     let entry = acc.entry(id.clone()).or_default();
                     *entry += *delta;
-                    // Remove entries that are fully unbonded
-                    if *entry == 0 {
-                        acc.remove(id);
-                    }
+                    // // Remove entries that are fully unbonded
+                    // if *entry == 0 {
+                    //     acc.remove(id);
+                    // }
                 }
                 acc
             },
