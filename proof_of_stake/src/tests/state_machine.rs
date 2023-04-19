@@ -729,12 +729,23 @@ impl ConcretePosState {
         // Post-condition: the validator should not be in the validator set
         // until the pipeline epoch
         for epoch in submit_epoch.iter_range(params.pipeline_len) {
-            // TODO: `read_all_validator_addresses` must not ignore epoch
-            // assert!(
-            //     !crate::read_all_validator_addresses(&self.s, epoch)
-            //         .unwrap()
-            //         .contains(address)
-            // );
+            assert!(
+                !crate::read_consensus_validator_set_addresses(&self.s, epoch)
+                    .unwrap()
+                    .contains(address)
+            );
+            assert!(
+                !crate::read_below_capacity_validator_set_addresses(
+                    &self.s, epoch
+                )
+                .unwrap()
+                .contains(address)
+            );
+            assert!(
+                !crate::read_all_validator_addresses(&self.s, epoch)
+                    .unwrap()
+                    .contains(address)
+            );
         }
         let weighted = WeightedValidator {
             bonded_stake: Default::default(),
@@ -1178,10 +1189,11 @@ impl AbstractStateMachine for AbstractPosState {
 
         // Transitions that can be applied if there are no bonds and unbonds
         let basic = prop_oneof![
-            3 => Just(Transition::NextEpoch),
-            5 => add_arb_bond_amount(state),
+            4 => Just(Transition::NextEpoch),
+            6 => add_arb_bond_amount(state),
             5 => arb_delegation(state),
-            2 => (
+            3 => arb_self_bond(state),
+            1 => (
                 address::testing::arb_established_address(),
                 key::testing::arb_common_keypair(),
                 arb_rate(),
@@ -1202,7 +1214,7 @@ impl AbstractStateMachine for AbstractPosState {
                         }
                     },
                 ),
-            1 => arb_slash(state),
+            2 => arb_slash(state),
         ];
 
         // Add unjailing, if any eligible
@@ -1273,10 +1285,20 @@ impl AbstractStateMachine for AbstractPosState {
                 commission_rate: _,
                 max_commission_rate_change: _,
             } => {
-                println!("\nABSTRACT Init Validator");
+                println!(
+                    "\nABSTRACT Init Validator {} in epoch {}",
+                    address, state.epoch
+                );
+                let pipeline: Epoch = state.pipeline();
+
+                // Initialize the stake at pipeline
+                state
+                    .validator_stakes
+                    .entry(pipeline)
+                    .or_default()
+                    .insert(address.clone(), 0_i128);
 
                 // Insert into validator set at pipeline
-                let pipeline = state.pipeline();
                 let consensus_set =
                     state.consensus_set.entry(pipeline).or_default();
 
@@ -1307,6 +1329,8 @@ impl AbstractStateMachine for AbstractPosState {
                         .or_default()
                 };
                 deque.push_back(address.clone());
+
+                state.debug_validators();
             }
             Transition::Bond { id, amount } => {
                 println!("\nABSTRACT Bond {} tokens, id = {}", amount, id);
@@ -2440,6 +2464,30 @@ fn arb_delegation(
             amount,
         },
     )
+}
+
+/// Arbitrary validator self-bond
+fn arb_self_bond(
+    state: &AbstractPosState,
+) -> impl Strategy<Value = Transition> {
+    // Bond is allowed to any validator in any set - including jailed validators
+    let validator_vec = state
+        .validator_states
+        .get(&state.pipeline())
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    let arb_validator = prop::sample::select(validator_vec);
+    (arb_validator, arb_bond_amount()).prop_map(|(validator, amount)| {
+        Transition::Bond {
+            id: BondId {
+                source: validator.clone(),
+                validator,
+            },
+            amount,
+        }
+    })
 }
 
 // Bond up to 10 tokens (10M micro units) to avoid overflows
