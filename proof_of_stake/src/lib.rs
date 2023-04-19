@@ -1528,6 +1528,16 @@ where
     let source = source.unwrap_or(validator);
     let bonds_handle = bond_handle(source, validator);
 
+    println!("Bonds before decrementing:");
+    for ep in Epoch::default().iter_range(current_epoch.0 + 3) {
+        let delta = bonds_handle
+            .get_delta_val(storage, ep, &params)?
+            .unwrap_or_default();
+        if delta != 0 {
+            println!("bond ∆ at epoch {}: {}", ep, delta);
+        }
+    }
+
     // Make sure there are enough tokens left in the bond at the pipeline offset
     let remaining_at_pipeline = bonds_handle
         .get_sum(storage, pipeline_epoch, &params)?
@@ -1555,16 +1565,6 @@ where
     #[allow(clippy::needless_collect)]
     let bonds: Vec<Result<_, _>> =
         bonds_handle.get_data_handler().iter(storage)?.collect();
-
-    println!("Bonds before decrementing:");
-    for ep in Epoch::default().iter_range(current_epoch.0 + 3) {
-        let delta = bonds_handle
-            .get_delta_val(storage, ep, &params)?
-            .unwrap_or_default();
-        if delta != 0 {
-            println!("bond ∆ at epoch {}: {}", ep, delta);
-        }
-    }
 
     let mut bond_iter = bonds.into_iter().rev();
 
