@@ -131,6 +131,13 @@ pub type Bonds = crate::epoched::EpochedDelta<
     23,
 >;
 
+/// An epoched lazy set of all known active validator addresses (consensus,
+/// below-capacity, jailed)
+pub type ValidatorAddresses = crate::epoched::NestedEpoched<
+    LazySet<Address>,
+    crate::epoched::OffsetPipelineLen,
+>;
+
 /// Slashes indexed by validator address and then block height (for easier
 /// retrieval and iteration when processing)
 pub type ValidatorSlashes = NestedMap<Address, Slashes>;

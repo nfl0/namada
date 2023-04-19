@@ -65,9 +65,9 @@ use types::{
     BondId, Bonds, CommissionRates, ConsensusValidator, ConsensusValidatorSet,
     ConsensusValidatorSets, EpochedSlashes, GenesisValidator, Position,
     RewardsProducts, Slash, SlashType, Slashes, TotalDeltas, Unbonds,
-    ValidatorConsensusKeys, ValidatorDeltas, ValidatorPositionAddresses,
-    ValidatorSetPositions, ValidatorSetUpdate, ValidatorState, ValidatorStates,
-    VoteInfo, WeightedValidator,
+    ValidatorAddresses, ValidatorConsensusKeys, ValidatorDeltas,
+    ValidatorPositionAddresses, ValidatorSetPositions, ValidatorSetUpdate,
+    ValidatorState, ValidatorStates, VoteInfo, WeightedValidator,
 };
 
 /// Address of the PoS account implemented as a native VP
@@ -276,6 +276,12 @@ pub fn total_deltas_handle() -> TotalDeltas {
     TotalDeltas::open(key)
 }
 
+/// Get the storage handle to the set of all validators
+pub fn validator_addresses_handle() -> ValidatorAddresses {
+    let key = storage::validator_addresses_key();
+    ValidatorAddresses::open(key)
+}
+
 /// Get the storage handle to a PoS validator's commission rate
 pub fn validator_commission_rate_handle(
     validator: &Address,
@@ -372,6 +378,7 @@ where
     consensus_validator_set_handle().init(storage, current_epoch)?;
     below_capacity_validator_set_handle().init(storage, current_epoch)?;
     validator_set_positions_handle().init(storage, current_epoch)?;
+    validator_addresses_handle().init(storage, current_epoch)?;
 
     for GenesisValidator {
         address,
@@ -397,6 +404,10 @@ where
             current_epoch,
             0,
         )?;
+
+        validator_addresses_handle()
+            .at(&current_epoch)
+            .insert(storage, address.clone())?;
 
         // Write other validator data to storage
         write_validator_address_raw_hash(storage, &address, &consensus_key)?;
@@ -754,29 +765,15 @@ where
 /// only does consensus and bc
 pub fn read_all_validator_addresses<S>(
     storage: &S,
-    _epoch: namada_core::types::storage::Epoch,
+    epoch: namada_core::types::storage::Epoch,
 ) -> storage_api::Result<HashSet<Address>>
 where
     S: StorageRead,
 {
-    // let mut addresses = read_consensus_validator_set_addresses(storage,
-    // epoch)?; let bc_addresses =
-    //     read_below_capacity_validator_set_addresses(storage, epoch)?;
-    // addresses.extend(bc_addresses.into_iter());
-
-    let prefix = Key::from(crate::ADDRESS.to_db_key())
-        .push(&crate::storage::VALIDATOR_STORAGE_PREFIX.to_owned())
-        .expect("Cannot obtain a storage key");
-    let mut addresses = HashSet::<Address>::new();
-    for iter in storage_api::iter_prefix_bytes(storage, &prefix)? {
-        let (key, _) = iter.unwrap();
-        if let Some(address) =
-            crate::storage::is_validator_max_commission_rate_change_key(&key)
-        {
-            addresses.insert(address.clone());
-        }
-    }
-    Ok(addresses)
+    validator_addresses_handle()
+        .at(&epoch)
+        .iter(storage)?
+        .collect()
 }
 
 /// Update PoS total deltas.
@@ -1327,6 +1324,20 @@ where
     }
     validator_set_positions_handle().set_last_update(storage, current_epoch)?;
 
+    // Copy set of all validator addresses
+    let mut all_validators = HashSet::<Address>::default();
+    let all_validators_handle = validator_addresses_handle().at(&prev_epoch);
+    for result in all_validators_handle.iter(storage)? {
+        let validator = result?;
+        all_validators.insert(validator);
+    }
+    let new_all_validators_handle =
+        validator_addresses_handle().at(&target_epoch);
+    for validator in all_validators {
+        let was_in = new_all_validators_handle.insert(storage, validator)?;
+        debug_assert!(!was_in);
+    }
+
     Ok(())
 }
 
@@ -1764,6 +1775,11 @@ where
 {
     // This will fail if the key is already being used
     try_insert_consensus_key(storage, consensus_key)?;
+
+    let pipeline_epoch = current_epoch + params.pipeline_len;
+    validator_addresses_handle()
+        .at(&pipeline_epoch)
+        .insert(storage, address.clone())?;
 
     // Non-epoched validator data
     write_validator_address_raw_hash(storage, address, consensus_key)?;

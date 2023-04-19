@@ -9,6 +9,7 @@ use crate::epoched::LAZY_MAP_SUB_KEY;
 pub use crate::types::*; // TODO: not sure why this needs to be public
 
 const PARAMS_STORAGE_KEY: &str = "params";
+const VALIDATOR_ADDRESSES_KEY: &str = "validator_addresses";
 #[allow(missing_docs)]
 pub const VALIDATOR_STORAGE_PREFIX: &str = "validator";
 const VALIDATOR_ADDRESS_RAW_HASH: &str = "address_raw_hash";
@@ -309,6 +310,13 @@ pub fn is_validator_deltas_key(key: &Key) -> Option<&Address> {
         }
         _ => None,
     }
+}
+
+/// Storage prefix for all active validators (consensus, below-capacity, jailed)
+pub fn validator_addresses_key() -> Key {
+    Key::from(ADDRESS.to_db_key())
+        .push(&VALIDATOR_ADDRESSES_KEY.to_owned())
+        .expect("Cannot obtain a storage key")
 }
 
 /// Storage prefix for slashes.
