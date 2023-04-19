@@ -730,6 +730,7 @@ pub fn read_and_confirm_encryption_password(
     };
     if to_confirm != password {
         eprintln!("Your two inputs do not match!");
+        eprintln!("Action cancelled, no changes persisted.");
         cli::safe_exit(1)
     }
     password
@@ -748,7 +749,8 @@ pub fn read_encryption_password(prompt_msg: &str) -> String {
         },
     };
     if pwd.is_empty() {
-        eprintln!("Password cannot be empty");
+        eprintln!("Password cannot be empty.");
+        eprintln!("Action cancelled, no changes persisted.");
         cli::safe_exit(1)
     }
     pwd
