@@ -856,13 +856,11 @@ mod test_process_proposal {
             Err(TestError::RejectProposal(response)) => {
                 assert_eq!(
                     response[0].result.code,
-                    u32::from(ErrorCodes::InvalidTx)
+                    u32::from(ErrorCodes::FeeError)
                 );
                 assert_eq!(
-                    response[0].result.info,
-                    "The given address does not have a sufficient balance to \
-                     pay fee"
-                        .to_string(),
+                    &response[0].result.info,
+"Transparent balance of wrapper's signer was insufficient to pay fee. All the available transparent funds have been moved to the block proposer",
                 );
             }
         }
@@ -918,14 +916,11 @@ mod test_process_proposal {
             Err(TestError::RejectProposal(response)) => {
                 assert_eq!(
                     response[0].result.code,
-                    u32::from(ErrorCodes::InvalidTx)
+                    u32::from(ErrorCodes::FeeError)
                 );
                 assert_eq!(
-                    response[0].result.info,
-                    String::from(
-                        "The given address does not have a sufficient balance \
-                         to pay fee"
-                    )
+                    &response[0].result.info,
+"Transparent balance of wrapper's signer was insufficient to pay fee. All the available transparent funds have been moved to the block proposer",
                 );
             }
         }
