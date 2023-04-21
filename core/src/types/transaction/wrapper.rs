@@ -63,7 +63,7 @@ pub mod wrapper_tx {
     )]
     pub struct Fee {
         /// amount of fee per gas unit
-        pub amount: Amount,
+        pub amount_per_gas_unit: Amount,
         /// address of the token
         pub token: Address,
     }
@@ -349,21 +349,25 @@ pub mod wrapper_tx {
             }
 
             match unshielded_balance.checked_add(transfer.amount) {
-                Some(v) if v == self.fee.amount => Ok(()),
+                Some(v) if v == self.fee.amount_per_gas_unit => Ok(()),
                 _ => Err(WrapperTxErr::InvalidUnshieldTx(format!(
                     "The unshielded amount is not the minimum required for \
                      fee payment: required {}, found: {}",
-                    self.fee.amount - unshielded_balance,
+                    self.fee.amount_per_gas_unit - unshielded_balance,
                     transfer.amount
                 ))),
             }
         }
 
         /// Get the [`Amount`] of fees to be paid by the given wrapper. Returns an error if the amount overflows
+        //FIXME: unit test this
         pub fn get_tx_fee(&self) -> Result<Amount, WrapperTxErr> {
-            u64::checked_mul(u64::from(&self.gas_limit), self.fee.amount.into())
-                .map(|v| v.into())
-                .ok_or_else(|| WrapperTxErr::OverflowingFee)
+            u64::checked_mul(
+                u64::from(&self.gas_limit),
+                self.fee.amount_per_gas_unit.into(),
+            )
+            .map(|v| v.into())
+            .ok_or_else(|| WrapperTxErr::OverflowingFee)
         }
     }
 
@@ -457,7 +461,7 @@ pub mod wrapper_tx {
 
             let wrapper = WrapperTx::new(
                 Fee {
-                    amount: 10.into(),
+                    amount_per_gas_unit: 10.into(),
                     token: nam(),
                 },
                 &keypair,
@@ -488,7 +492,7 @@ pub mod wrapper_tx {
 
             let mut wrapper = WrapperTx::new(
                 Fee {
-                    amount: 10.into(),
+                    amount_per_gas_unit: 10.into(),
                     token: nam(),
                 },
                 &gen_keypair(),
@@ -525,7 +529,7 @@ pub mod wrapper_tx {
             // the signed tx
             let mut tx = WrapperTx::new(
                 Fee {
-                    amount: 10.into(),
+                    amount_per_gas_unit: 10.into(),
                     token: nam(),
                 },
                 &keypair,
