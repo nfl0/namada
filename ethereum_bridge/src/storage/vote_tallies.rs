@@ -34,7 +34,7 @@ pub struct KeysSegments {
     pub seen: &'static str,
     pub seen_by: &'static str,
     pub voting_power: &'static str,
-    pub first_epoch: &'static str,
+    pub voting_started_epoch: &'static str,
 }
 
 /// Generator for the keys under which details of votes for some piece of data
@@ -87,14 +87,14 @@ impl<T> Keys<T> {
             .expect("should always be able to construct this key")
     }
 
-    /// Get the `first_epoch` key - there should be an [`Epoch`] stored
+    /// Get the `voting_started_epoch` key - there should be an [`Epoch`] stored
     /// here.
     ///
     /// This value corresponds to the [`Epoch`] when some [`EthereumEvent`]
     /// was first voted on.
-    pub fn first_epoch(&self) -> Key {
+    pub fn voting_started_epoch(&self) -> Key {
         self.prefix
-            .push(&KeysSegments::VALUES.first_epoch.to_owned())
+            .push(&KeysSegments::VALUES.voting_started_epoch.to_owned())
             .expect("should always be able to construct this key")
     }
 }
@@ -109,7 +109,7 @@ impl<T> IntoIterator for &Keys<T> {
             self.seen(),
             self.seen_by(),
             self.voting_power(),
-            self.first_epoch(),
+            self.voting_started_epoch(),
         ]
         .into_iter()
     }
@@ -147,7 +147,7 @@ pub fn is_epoch_key(key: &Key) -> bool {
                 DbKeySeg::StringSeg(_prefix),
                 DbKeySeg::StringSeg(_hash),
                 DbKeySeg::StringSeg(e),
-            ] if e == KeysSegments::VALUES.first_epoch)
+            ] if e == KeysSegments::VALUES.voting_started_epoch)
 }
 
 /// Return true if the storage key is a key to store the `seen`
@@ -324,7 +324,7 @@ mod test {
                 keys.seen(),
                 keys.seen_by(),
                 keys.voting_power(),
-                keys.first_epoch(),
+                keys.voting_started_epoch(),
             ]
         );
     }
