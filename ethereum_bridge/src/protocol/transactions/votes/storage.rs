@@ -30,7 +30,7 @@ where
     if !already_present {
         // add the current epoch for the inserted event
         wl_storage.write_bytes(
-            &keys.epoch(),
+            &keys.first_epoch(),
             &wl_storage.storage.get_current_epoch().0.try_to_vec()?,
         )?;
     }
@@ -50,7 +50,7 @@ where
     wl_storage.delete(&keys.seen())?;
     wl_storage.delete(&keys.seen_by())?;
     wl_storage.delete(&keys.voting_power())?;
-    wl_storage.delete(&keys.epoch())?;
+    wl_storage.delete(&keys.first_epoch())?;
     Ok(())
 }
 
@@ -156,7 +156,7 @@ mod tests {
             voting_power,
             Some(tally.voting_power.try_to_vec().unwrap())
         );
-        let epoch = wl_storage.read_bytes(&keys.epoch()).unwrap();
+        let epoch = wl_storage.read_bytes(&keys.first_epoch()).unwrap();
         assert_eq!(
             epoch,
             Some(
@@ -204,7 +204,7 @@ mod tests {
             .unwrap();
         wl_storage
             .write_bytes(
-                &keys.epoch(),
+                &keys.first_epoch(),
                 &wl_storage
                     .storage
                     .get_block_height()

@@ -30,7 +30,7 @@ pub const BODY_KEY_SEGMENT: &str = "body";
 const SEEN_KEY_SEGMENT: &str = "seen";
 const SEEN_BY_KEY_SEGMENT: &str = "seen_by";
 pub const VOTING_POWER_KEY_SEGMENT: &str = "voting_power";
-pub const EPOCH_KEY_SEGMENT: &str = "epoch";
+pub const FIRST_EPOCH_KEY_SEGMENT: &str = "first_epoch";
 
 /// Generator for the keys under which details of votes for some piece of data
 /// is stored
@@ -74,10 +74,14 @@ impl<T> Keys<T> {
             .expect("should always be able to construct this key")
     }
 
-    /// Get the `epoch` key - there should be an `Epoch` stored here.
-    pub fn epoch(&self) -> Key {
+    /// Get the `first_epoch` key - there should be an [`Epoch`] stored
+    /// here.
+    ///
+    /// This value corresponds to the [`Epoch`] when some [`EthereumEvent`]
+    /// was first voted on.
+    pub fn first_epoch(&self) -> Key {
         self.prefix
-            .push(&EPOCH_KEY_SEGMENT.to_owned())
+            .push(&FIRST_EPOCH_KEY_SEGMENT.to_owned())
             .expect("should always be able to construct this key")
     }
 }
@@ -92,7 +96,7 @@ impl<T> IntoIterator for &Keys<T> {
             self.seen(),
             self.seen_by(),
             self.voting_power(),
-            self.epoch(),
+            self.first_epoch(),
         ]
         .into_iter()
     }
@@ -130,7 +134,7 @@ pub fn is_epoch_key(key: &Key) -> bool {
                 DbKeySeg::StringSeg(_prefix),
                 DbKeySeg::StringSeg(_hash),
                 DbKeySeg::StringSeg(e),
-            ] if e == EPOCH_KEY_SEGMENT)
+            ] if e == FIRST_EPOCH_KEY_SEGMENT)
 }
 
 /// Return true if the storage key is a key to store the `seen`
@@ -307,7 +311,7 @@ mod test {
                 keys.seen(),
                 keys.seen_by(),
                 keys.voting_power(),
-                keys.epoch(),
+                keys.first_epoch(),
             ]
         );
     }
