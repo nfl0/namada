@@ -1044,7 +1044,7 @@ where
     )
     .unwrap();
 
-    match wrapper.get_tx_fee() {
+    match wrapper.fee_amount() {
         Ok(fees) => {
             if balance.checked_sub(fees).is_some() {
                 dispatch_fee_action(wl_storage, wrapper, block_proposer, fees)
