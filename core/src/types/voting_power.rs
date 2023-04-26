@@ -75,6 +75,10 @@ impl From<EthBridgeVotingPower> for u64 {
 pub struct FractionalVotingPower(Ratio<u64>);
 
 impl FractionalVotingPower {
+    /// Null voting power.
+    pub const NULL: FractionalVotingPower =
+        FractionalVotingPower(Ratio::new_raw(0, 1));
+
     /// Two thirds of the voting power.
     pub const TWO_THIRDS: FractionalVotingPower =
         FractionalVotingPower(Ratio::new_raw(2, 3));
@@ -97,7 +101,7 @@ impl FractionalVotingPower {
 
 impl Default for FractionalVotingPower {
     fn default() -> Self {
-        Self::new(0, 1).unwrap()
+        Self::NULL
     }
 }
 
