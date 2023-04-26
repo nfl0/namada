@@ -78,7 +78,6 @@ impl FractionalVotingPower {
     /// Null voting power.
     pub const NULL: FractionalVotingPower =
         FractionalVotingPower(Ratio::new_raw(0, 1));
-
     /// Two thirds of the voting power.
     pub const TWO_THIRDS: FractionalVotingPower =
         FractionalVotingPower(Ratio::new_raw(2, 3));

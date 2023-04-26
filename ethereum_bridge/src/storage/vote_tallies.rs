@@ -30,10 +30,17 @@ pub const VALSET_UPDS_PREFIX_KEY_SEGMENT: &str = "validator_set_updates";
 /// Storage segments of [`Keys`].
 #[derive(StorageKeys)]
 pub struct KeysSegments {
+    /// The data being voted on, corresponding to the `T` type
+    /// argument in [`Keys`].
     pub body: &'static str,
+    /// Whether more than two thirds of voting power across different
+    /// epochs have voted on `body`.
     pub seen: &'static str,
+    /// The validators who have voted on `body`.
     pub seen_by: &'static str,
+    /// The total voting power behind `body`.
     pub voting_power: &'static str,
+    /// The epoch when voting on `body` started.
     pub voting_started_epoch: &'static str,
 }
 
@@ -89,9 +96,6 @@ impl<T> Keys<T> {
 
     /// Get the `voting_started_epoch` key - there should be an [`Epoch`] stored
     /// here.
-    ///
-    /// This value corresponds to the [`Epoch`] when some [`EthereumEvent`]
-    /// was first voted on.
     pub fn voting_started_epoch(&self) -> Key {
         self.prefix
             .push(&KeysSegments::VALUES.voting_started_epoch.to_owned())
