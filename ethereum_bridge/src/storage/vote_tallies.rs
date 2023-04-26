@@ -10,6 +10,7 @@ use namada_core::types::hash::Hash;
 use namada_core::types::keccak::KeccakHash;
 use namada_core::types::storage::{DbKeySeg, Epoch, Key};
 use namada_core::types::vote_extensions::validator_set_update::VotingPowersMap;
+use namada_macros::StorageKeys;
 
 use crate::storage::proof::{BridgePoolRootProof, EthereumProof};
 
@@ -26,11 +27,15 @@ pub const BRIDGE_POOL_ROOT_PREFIX_KEY_SEGMENT: &str = "bp_root_and_nonce";
 /// voting power assigned to validator set updates.
 pub const VALSET_UPDS_PREFIX_KEY_SEGMENT: &str = "validator_set_updates";
 
-pub const BODY_KEY_SEGMENT: &str = "body";
-const SEEN_KEY_SEGMENT: &str = "seen";
-const SEEN_BY_KEY_SEGMENT: &str = "seen_by";
-pub const VOTING_POWER_KEY_SEGMENT: &str = "voting_power";
-pub const FIRST_EPOCH_KEY_SEGMENT: &str = "first_epoch";
+/// Storage segments of [`Keys`].
+#[derive(StorageKeys)]
+pub struct KeysSegments {
+    pub body: &'static str,
+    pub seen: &'static str,
+    pub seen_by: &'static str,
+    pub voting_power: &'static str,
+    pub first_epoch: &'static str,
+}
 
 /// Generator for the keys under which details of votes for some piece of data
 /// is stored
@@ -42,19 +47,27 @@ pub struct Keys<T> {
     _phantom: std::marker::PhantomData<*const T>,
 }
 
+impl Keys<()> {
+    /// Return the storage key segments to be stored under [`Keys`].
+    #[inline(always)]
+    pub fn segments() -> &'static KeysSegments {
+        &KeysSegments::VALUES
+    }
+}
+
 impl<T> Keys<T> {
     /// Get the `body` key - there should be a Borsh-serialized `T` stored
     /// here.
     pub fn body(&self) -> Key {
         self.prefix
-            .push(&BODY_KEY_SEGMENT.to_owned())
+            .push(&KeysSegments::VALUES.body.to_owned())
             .expect("should always be able to construct this key")
     }
 
     /// Get the `seen` key - there should be a [`bool`] stored here.
     pub fn seen(&self) -> Key {
         self.prefix
-            .push(&SEEN_KEY_SEGMENT.to_owned())
+            .push(&KeysSegments::VALUES.seen.to_owned())
             .expect("should always be able to construct this key")
     }
 
@@ -62,7 +75,7 @@ impl<T> Keys<T> {
     /// here.
     pub fn seen_by(&self) -> Key {
         self.prefix
-            .push(&SEEN_BY_KEY_SEGMENT.to_owned())
+            .push(&KeysSegments::VALUES.seen_by.to_owned())
             .expect("should always be able to construct this key")
     }
 
@@ -70,7 +83,7 @@ impl<T> Keys<T> {
     /// here.
     pub fn voting_power(&self) -> Key {
         self.prefix
-            .push(&VOTING_POWER_KEY_SEGMENT.to_owned())
+            .push(&KeysSegments::VALUES.voting_power.to_owned())
             .expect("should always be able to construct this key")
     }
 
@@ -81,7 +94,7 @@ impl<T> Keys<T> {
     /// was first voted on.
     pub fn first_epoch(&self) -> Key {
         self.prefix
-            .push(&FIRST_EPOCH_KEY_SEGMENT.to_owned())
+            .push(&KeysSegments::VALUES.first_epoch.to_owned())
             .expect("should always be able to construct this key")
     }
 }
@@ -134,7 +147,7 @@ pub fn is_epoch_key(key: &Key) -> bool {
                 DbKeySeg::StringSeg(_prefix),
                 DbKeySeg::StringSeg(_hash),
                 DbKeySeg::StringSeg(e),
-            ] if e == FIRST_EPOCH_KEY_SEGMENT)
+            ] if e == KeysSegments::VALUES.first_epoch)
 }
 
 /// Return true if the storage key is a key to store the `seen`
@@ -144,7 +157,7 @@ pub fn is_seen_key(key: &Key) -> bool {
                 DbKeySeg::StringSeg(_prefix),
                 DbKeySeg::StringSeg(_hash),
                 DbKeySeg::StringSeg(e),
-            ] if e == SEEN_KEY_SEGMENT)
+            ] if e == KeysSegments::VALUES.seen)
 }
 
 impl From<&EthereumEvent> for Keys<EthereumEvent> {
@@ -274,28 +287,28 @@ mod test {
         assert_eq!(body_key.segments[..3], prefix[..]);
         assert_eq!(
             body_key.segments[3],
-            DbKeySeg::StringSeg(BODY_KEY_SEGMENT.to_owned())
+            DbKeySeg::StringSeg(KeysSegments::VALUES.body.to_owned())
         );
 
         let seen_key = keys.seen();
         assert_eq!(seen_key.segments[..3], prefix[..]);
         assert_eq!(
             seen_key.segments[3],
-            DbKeySeg::StringSeg(SEEN_KEY_SEGMENT.to_owned())
+            DbKeySeg::StringSeg(KeysSegments::VALUES.seen.to_owned())
         );
 
         let seen_by_key = keys.seen_by();
         assert_eq!(seen_by_key.segments[..3], prefix[..]);
         assert_eq!(
             seen_by_key.segments[3],
-            DbKeySeg::StringSeg(SEEN_BY_KEY_SEGMENT.to_owned())
+            DbKeySeg::StringSeg(KeysSegments::VALUES.seen_by.to_owned())
         );
 
         let voting_power_key = keys.voting_power();
         assert_eq!(voting_power_key.segments[..3], prefix[..]);
         assert_eq!(
             voting_power_key.segments[3],
-            DbKeySeg::StringSeg(VOTING_POWER_KEY_SEGMENT.to_owned())
+            DbKeySeg::StringSeg(KeysSegments::VALUES.voting_power.to_owned())
         );
     }
 
