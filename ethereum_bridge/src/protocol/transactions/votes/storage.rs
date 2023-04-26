@@ -22,12 +22,13 @@ where
     H: 'static + StorageHasher + Sync,
     T: BorshSerialize,
 {
-    wl_storage.write_bytes(&keys.body(), &body.try_to_vec()?)?;
     wl_storage.write_bytes(&keys.seen(), &tally.seen.try_to_vec()?)?;
     wl_storage.write_bytes(&keys.seen_by(), &tally.seen_by.try_to_vec()?)?;
     wl_storage
         .write_bytes(&keys.voting_power(), &tally.voting_power.try_to_vec()?)?;
     if !already_present {
+        // write the data being voted on to storage
+        wl_storage.write_bytes(&keys.body(), &body.try_to_vec()?)?;
         // add the current epoch for the inserted event
         wl_storage.write_bytes(
             &keys.voting_started_epoch(),
