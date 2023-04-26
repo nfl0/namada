@@ -42,6 +42,8 @@ pub struct KeysSegments {
     pub voting_power: &'static str,
     /// The epoch when voting on `body` started.
     pub voting_started_epoch: &'static str,
+    /// The epoch when the last vote on `body` was made.
+    pub last_vote_epoch: &'static str,
 }
 
 /// Generator for the keys under which details of votes for some piece of data
@@ -99,6 +101,14 @@ impl<T> Keys<T> {
     pub fn voting_started_epoch(&self) -> Key {
         self.prefix
             .push(&KeysSegments::VALUES.voting_started_epoch.to_owned())
+            .expect("should always be able to construct this key")
+    }
+
+    /// Get the `last_vote_epoch` key - there should be an [`Epoch`] stored
+    /// here.
+    pub fn last_vote_epoch(&self) -> Key {
+        self.prefix
+            .push(&KeysSegments::VALUES.last_vote_epoch.to_owned())
             .expect("should always be able to construct this key")
     }
 }
